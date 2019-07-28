@@ -3,10 +3,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
-from torch.autograd import Variable
 
 
 class model_memory_single(nn.Module):
+    """
+    Memory Network model. The model encodes the past trajectory and retrieves from memory the most similar samples.
+    The memory is an associative memory past:future. The encoding of the current past is concatenated with the encoding
+    of the retrieved future and decoded into the current future.
+    """
     def __init__(self, settings, model_pretrained):
         super(model_memory_single, self).__init__()
         self.name_model = 'mem'
@@ -15,6 +19,8 @@ class model_memory_single(nn.Module):
         self.use_cuda = settings["use_cuda"]
         self.dim_embedding_key = settings["dim_embedding_key"]
         self.num_prediction = settings["num_prediction"]
+        self.past_len = settings["past_len"]
+        self.future_len = settings["future_len"]
 
         # similarity criterion
         self.similarity = nn.CosineSimilarity(dim=1)
@@ -35,8 +41,7 @@ class model_memory_single(nn.Module):
         self.relu = nn.ReLU()
         self.softmax = nn.Softmax()
 
-        # scene
-        # input shape (batch, classes, 360, 360)
+        # scene: input shape (batch, classes, 360, 360)
         self.convScene_1 = nn.Sequential(
             nn.Conv2d(4, 16, kernel_size=5, stride=2, padding=2),
             nn.ReLU())
@@ -46,8 +51,8 @@ class model_memory_single(nn.Module):
 
         self.RNN_scene = nn.GRU(32, self.dim_embedding_key, 1, batch_first=True)
 
-        # refine layer Fc
-        self.fc_refine = nn.Linear(self.dim_embedding_key, 80)
+        # refinement fc layer
+        self.fc_refine = nn.Linear(self.dim_embedding_key, self.future_len*2)
 
         self.reset_parameters()
 
@@ -69,6 +74,12 @@ class model_memory_single(nn.Module):
         nn.init.zeros_(self.fc_refine.bias)
 
     def create_memory(self, past, future):
+        """
+        Write element in memory.
+        :param past: past trajectory
+        :param future: future trajectory
+        :return: None
+        """
 
         # past encoding
         past = torch.transpose(past, 1, 2)
@@ -112,14 +123,18 @@ class model_memory_single(nn.Module):
                 self.memory_fut = torch.cat((self.memory_fut, state_fut[i].unsqueeze(0)), 0)
 
     def forward(self, past, scene):
-
+        """
+        Forward pass. Predicts future trajectory based on past trajectory and surrounding scene.
+        :param past: past trajectory
+        :param scene: surrounding map
+        :return: predicted future
+        """
         dim_batch = past.size()[0]
-        weight_read = torch.FloatTensor(dim_batch, len(self.memory_past)).cuda()
         zero_padding = torch.zeros(1, dim_batch, self.dim_embedding_key * 2).cuda()
         prediction = torch.Tensor().cuda()
         present_temp = past[:, -1].unsqueeze(1)
 
-        # temporal encoding for past
+        # past temporal encoding
         past = torch.transpose(past, 1, 2)
         story_embed = self.relu(self.conv_past(past))
         story_embed = torch.transpose(story_embed, 1, 2)
@@ -130,27 +145,25 @@ class model_memory_single(nn.Module):
         scene_1 = self.convScene_1(scene)
         scene_2 = self.convScene_2(scene_1)
 
-        # Cosine similarity
+        # Cosine similarity and memory read
         past_normalized = F.normalize(self.memory_past, p=2, dim=1)
         state_normalized = F.normalize(state_past.squeeze(), p=2, dim=1)
         weight_read = torch.matmul(past_normalized, state_normalized.transpose(0,1)).transpose(0,1)
-
         index_max = torch.sort(weight_read, descending=True)[1].cpu()
 
         for i_track in range(self.num_prediction):
-            # info_total = torch.cat((info_future[:,i_track], story_embed), 1)
-
             present = present_temp
             prediction_single = torch.Tensor().cuda()
             ind = index_max[:, i_track]
-            # +1 nelle celle delle k traiettorie più probabili
+
+            # Accumulate usage statistics
             self.memory_count[ind] += 1
 
             info_future = self.memory_fut[ind]
             info_total = torch.cat((state_past, info_future.unsqueeze(0)), 2)
             input_dec = info_total
             state_dec = zero_padding
-            for i in range(40):
+            for i in range(self.future_len):
                 output_decoder, state_dec = self.decoder(input_dec, state_dec)
                 displacement_next = self.FC_output(output_decoder)
                 coords_next = present + displacement_next.squeeze(0).unsqueeze(1)
@@ -158,18 +171,17 @@ class model_memory_single(nn.Module):
                 present = coords_next
                 input_dec = zero_padding
 
-            # aggiungere ciclo refinement
+            # Iteratively refine predictions using context
             for i_refine in range(4):
                 pred_map = prediction_single + 90
                 pred_map = pred_map.unsqueeze(2)
                 indices = pred_map.permute(0, 2, 1, 3)
 
-                # between -1 and 1
+                # rescale between -1 and 1
                 indices = 2 * (indices / 180) - 1
                 output = F.grid_sample(scene_2, indices, mode='nearest')
                 output = output.squeeze(2).permute(0, 2, 1)
 
-                # input_rnn = scene_feat
                 state_rnn = state_past
                 output_rnn, state_rnn = self.RNN_scene(output, state_rnn)
                 prediction_refine = self.fc_refine(state_rnn).view(dim_batch, 40, 2)
