@@ -85,21 +85,18 @@ class model_memory_single(nn.Module):
         state_past = state_past.squeeze(0)
         state_fut = state_fut.squeeze(0)
 
-        # memory caso naive
-        # self.memory_past = torch.cat((self.memory_past, state_past))
-        # self.memory_fut = torch.cat((self.memory_fut, state_fut))
         self.memory_count = []
 
-        # memory con eliminazione di quelle simili
-        i = 0
-        if len(self.memory_past) == 0:
-            self.memory_past = torch.cat((self.memory_past, state_past[0])).unsqueeze(0)
-            self.memory_fut = torch.cat((self.memory_fut, state_fut[0])).unsqueeze(0)
-            i += 1
-
         for i in range(len(past)):
-
             dim_mem = self.memory_past.shape[0]
+
+            if dim_mem == 0:
+                # Memory is empty, populate with first sample
+                self.memory_past = torch.cat((self.memory_past, state_past[0])).unsqueeze(0)
+                self.memory_fut = torch.cat((self.memory_fut, state_fut[0])).unsqueeze(0)
+                continue
+
+            # Compute similarity with samples in memory
             temp_state_past_i = state_past[i].unsqueeze(0).repeat(dim_mem, 1)
             temp_state_fut_i = state_fut[i].unsqueeze(0).repeat(dim_mem, 1)
 
@@ -110,6 +107,7 @@ class model_memory_single(nn.Module):
             th_fut = np.where(sim_mem_fut.cpu() == 1.0)
 
             if len(np.intersect1d(th_past, th_fut)) == 0:
+                # Write in memory if sample is different from what is stored in memory
                 self.memory_past = torch.cat((self.memory_past, state_past[i].unsqueeze(0)), 0)
                 self.memory_fut = torch.cat((self.memory_fut, state_fut[i].unsqueeze(0)), 0)
 
@@ -132,10 +130,11 @@ class model_memory_single(nn.Module):
         scene_1 = self.convScene_1(scene)
         scene_2 = self.convScene_2(scene_1)
 
-        for i in range(dim_batch):
-            weight_read[i] = self.similarity(self.memory_past, state_past[:, i]).unsqueeze(0)
+        # Cosine similarity
+        past_normalized = F.normalize(self.memory_past, p=2, dim=1)
+        state_normalized = F.normalize(state_past.squeeze(), p=2, dim=1)
+        weight_read = torch.matmul(past_normalized, state_normalized.transpose(0,1)).transpose(0,1)
 
-        # weight_read[torch.arange(dim_batch)] = self.similarity(self.memory_past, state_past[:,torch.arange(dim_batch)]).unsqueeze(0)
         index_max = torch.sort(weight_read, descending=True)[1].cpu()
 
         for i_track in range(self.num_prediction):
