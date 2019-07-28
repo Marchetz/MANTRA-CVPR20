@@ -6,9 +6,9 @@ import matplotlib.pyplot as plt
 from torch.autograd import Variable
 
 
-class MemNet(nn.Module):
+class model_memory_single(nn.Module):
     def __init__(self, settings, model_pretrained):
-        super(MemNet, self).__init__()
+        super(model_memory_single, self).__init__()
         self.name_model = 'mem'
 
         # parameters

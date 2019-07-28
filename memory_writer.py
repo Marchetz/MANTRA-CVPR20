@@ -8,7 +8,7 @@ import json
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from models.memnet import MemNet
+from models.model_memory_single import model_memory_single
 import dataset
 from torch.autograd import Variable
 
@@ -72,7 +72,7 @@ class MemoryWriter():
 
         # load pretrained model and create memory model
         self.model_pretrained = torch.load(config.model)
-        self.mem_n2n = MemNet(self.settings, self.model_pretrained)
+        self.mem_n2n = model_memory_single(self.settings, self.model_pretrained)
         self.EuclDistance = nn.PairwiseDistance(p=2)
         self.iterations = 0
         if config.cuda:
