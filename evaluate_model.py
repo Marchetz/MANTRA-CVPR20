@@ -59,7 +59,7 @@ class Validator():
         self.mem_n2n.future_len = config.future_len
         self.mem_n2n.past_len = config.past_len
 
-        self.EuclDistance = nn.PairwiseDistance(p=2)
+        self.eucl_distance = nn.PairwiseDistance(p=2)
         self.iterations = 0
         if config.cuda:
             self.mem_n2n = self.mem_n2n.cuda()
@@ -67,12 +67,23 @@ class Validator():
         self.config = config
 
     def test_model(self):
+        """
+        Perform test step and save results
+        :return: None
+        """
         self.mem_n2n.memory_past = torch.load('memory_past_test.pt')
         self.mem_n2n.memory_fut = torch.load('memory_fut_test.pt')
         dict_metrics_test = self.evaluate(self.test_loader, 1)
         self.save_results(dict_metrics_test, epoch=0)
 
     def save_results(self, dict_metrics_test, dict_metrics_train=None, epoch=0):
+        """
+        Save test results
+        :param dict_metrics_test: dictionary with test metrics
+        :param dict_metrics_train: dictionary with test metrics
+        :param epoch: epoch number (default: 0)
+        :return: None
+        """
         self.file = open(self.folder_test + "results.txt", "w")
         self.file.write("TEST:" + '\n')
         self.file.write("num_predictions:" + str(self.config.preds) + '\n')
@@ -100,13 +111,9 @@ class Validator():
             self.file.write("ADE 4s: " + str(dict_metrics_train['euclMean'].item()) + '\n')
         self.file.close()
 
-    def load(self, directory):
-        pass
-
-    def draw_track(self, story, future, scene_track, pred=None, present=None, video_id='', vec_id='', index_tracklet=0,
+    def draw_track(self, past, future, scene_track, pred=None, present=None, video_id='', vec_id='', index_tracklet=0,
                    num_epoch=0, saveFig=False, path='', remove_pred='', index_ranking=None):
 
-        config = self.config
         colors = [(0, 0, 0), (0.87, 0.87, 0.87), (0.54, 0.54, 0.54), (0.49, 0.33, 0.16), (0.29, 0.57, 0.25)]
         cmap_name = 'scene_cmap'
         cm = LinearSegmentedColormap.from_list(cmap_name, colors, N=5)
@@ -115,10 +122,10 @@ class Validator():
         plt.imshow(scene_track, cmap=cm)
         colors = pl.cm.Reds(np.linspace(1, 0.3, pred.shape[0]))
 
-        story = story.cpu().numpy()
+        past = past.cpu().numpy()
         future = future.cpu().numpy()
 
-        story_scene = story * 2 + self.dim_clip
+        story_scene = past * 2 + self.dim_clip
         future_scene = future * 2 + self.dim_clip
 
         plt.plot(story_scene[:, 0], story_scene[:, 1], c='blue', linewidth=1, marker='o', markersize=1)
@@ -141,6 +148,12 @@ class Validator():
         plt.close(fig)
 
     def evaluate(self, loader, epoch=0):
+        """
+        Evaluate model
+        :param loader: data loader for test samples
+        :param epoch: epoch number (default: 0)
+        :return: metric dictionary
+        """
 
         videos_json = {}
         test_ids = self.data_test.ids_split_test
@@ -151,38 +164,34 @@ class Validator():
                 videos_json['video_' + str(ids).zfill(4)]['frame_' + str(i_temp).zfill(3)] = {}
 
         with torch.no_grad():
-            dictMetrics = {}
-            euclMean = ADE_1s = ADE_2s = ADE_3s = horizon01s = horizon10s = horizon20s = horizon30s = horizon40s = 0
+            dict_metrics = {}
+            eucl_mean = ADE_1s = ADE_2s = ADE_3s = horizon01s = horizon10s = horizon20s = horizon30s = horizon40s = 0
 
             list_err1 = []
             list_err2 = []
             list_err3 = []
             list_err4 = []
 
-            for step, (index, story, future, presents, videos, vehicles, number_vec, scene, scene_one_hot) in tqdm(enumerate(
-                    loader)):
-
-                story = Variable(story)
+            for step, (index, past, future, presents, videos, vehicles, number_vec, scene, scene_one_hot) in tqdm(enumerate(loader)):
+                past = Variable(past)
                 future = Variable(future)
                 scene_one_hot = Variable(scene_one_hot)
                 if self.config.cuda:
-                    story = story.cuda()
+                    past = past.cuda()
                     future = future.cuda()
                     scene_one_hot = scene_one_hot.cuda()
-                pred = self.mem_n2n(story, scene_one_hot)
+                pred = self.mem_n2n(past, scene_one_hot)
 
-                # salva img con tutte le predizioni e img con quelle rimosse
-                for i in range(len(story)):
+                for i in range(len(past)):
                     scene_i = scene[i]
                     pred_good = torch.Tensor().cuda()
-                    listError = []
+                    list_error = []
 
                     for i_multiple in range(len(pred[i])):
 
                         pred_one = pred[i][i_multiple]
-                        dist = self.EuclDistance(pred_one, future[i, :])
-                        listError.append(torch.mean(dist))
-                        # error_scene = 0
+                        dist = self.eucl_distance(pred_one, future[i, :])
+                        list_error.append(torch.mean(dist))
                         pred_one = pred[i][i_multiple]
                         pred_one_scene = pred_one * 2 + self.dim_clip
                         pred_one_scene = pred_one_scene.type(torch.LongTensor)
@@ -192,24 +201,19 @@ class Validator():
                         else:
                             pred_situation = scene_i[pred_one_scene[:, 1], pred_one_scene[:, 0]]
 
-                        # if vehicles[i] == 'Cyclist' or vehicles[i] == 'Pedestrian':
-                        #     error_scene = len(np.where((pred_situation!=1) & (pred_situation!=2))[0])
-                        # else:
+                        # Count points predicted outside from the road and remove bad predictions
                         error_scene = len(np.where(pred_situation != 1)[0])
-                        #
                         if error_scene < 10:
                             pred_good = torch.cat((pred_good, pred_one.unsqueeze(0)), 0)
-                        # #scarta la predizione se è sopra di un certo errore
-                        # #faccio un nuova variabile e ci appendo quelle giuste
 
                     if len(pred_good) == 0:
                         pred_one = pred[i][0]
                         pred_good = torch.cat((pred_good, pred_one.unsqueeze(0)), 0)
 
-                    i_min = np.argmin(listError)
-                    dist = self.EuclDistance(pred[i][i_min], future[i, :])
+                    i_min = np.argmin(list_error)
+                    dist = self.eucl_distance(pred[i][i_min], future[i, :])
 
-                    euclMean += torch.mean(dist)
+                    eucl_mean += torch.mean(dist)
                     ADE_1s += torch.mean(dist[:10])
                     ADE_2s += torch.mean(dist[:20])
                     ADE_3s += torch.mean(dist[:30])
@@ -230,7 +234,7 @@ class Validator():
                     present = presents[i].cpu()
 
                     # json
-                    st = story[i].cpu() + present
+                    st = past[i].cpu() + present
                     fu = future[i].cpu() + present
                     pr = pred_good.cpu() + present
                     videos_json['video_' + vid]['frame_' + str(index_track).zfill(3)][vec + num_vec] = {}
@@ -252,35 +256,35 @@ class Validator():
                                 os.makedirs(video_path + vec + num_vec)
                             vehicle_path = video_path + vec + num_vec + '/'
 
-                            self.draw_track(story[i], future[i], scene[i], pred_good, present, vid, vec + num_vec,
+                            self.draw_track(past[i], future[i], scene[i], pred_good, present, vid, vec + num_vec,
                                             index_tracklet=index_track, num_epoch=epoch, saveFig=True,
                                             path=vehicle_path, remove_pred='_Remove')
                         else:
                             if index_track.item() in self.test_index[vid][vec + num_vec]:
-                                # fai una cartella dove metti gli esempi salienti
+                                # Save interesting results
                                 if not os.path.exists(self.folder_test + 'highlights'):
                                     os.makedirs(self.folder_test + 'highlights')
                                 highlights_path = self.folder_test + 'highlights' + '/'
-                                # prima della cancellazione
-                                self.draw_track(story[i], future[i], scene[i], pred[i], present, vid, vec + num_vec,
+                                # before removing bad predictions
+                                self.draw_track(past[i], future[i], scene[i], pred[i], present, vid, vec + num_vec,
                                                 index_tracklet=index_track, num_epoch=epoch, saveFig=True,
                                                 path=highlights_path, remove_pred='_0noRemove')
-                                # dopo la cancellazione
-                                self.draw_track(story[i], future[i], scene[i], pred_good, present, vid, vec + num_vec,
+                                # after removing bad predictions
+                                self.draw_track(past[i], future[i], scene[i], pred_good, present, vid, vec + num_vec,
                                                 index_tracklet=index_track, num_epoch=epoch, saveFig=True,
                                                 path=highlights_path, remove_pred='_1YesRemove')
 
             with open(self.folder_test + 'preds_test.json', 'w') as outfile:
                 json.dump(videos_json, outfile)
 
-            dictMetrics['euclMean'] = euclMean / len(loader.dataset)
-            dictMetrics['ADE_1s'] = ADE_1s / len(loader.dataset)
-            dictMetrics['ADE_2s'] = ADE_2s / len(loader.dataset)
-            dictMetrics['ADE_3s'] = ADE_3s / len(loader.dataset)
-            dictMetrics['horizon01s'] = horizon01s / len(loader.dataset)
-            dictMetrics['horizon10s'] = horizon10s / len(loader.dataset)
-            dictMetrics['horizon20s'] = horizon20s / len(loader.dataset)
-            dictMetrics['horizon30s'] = horizon30s / len(loader.dataset)
-            dictMetrics['horizon40s'] = horizon40s / len(loader.dataset)
+            dict_metrics['eucl_mean'] = eucl_mean / len(loader.dataset)
+            dict_metrics['ADE_1s'] = ADE_1s / len(loader.dataset)
+            dict_metrics['ADE_2s'] = ADE_2s / len(loader.dataset)
+            dict_metrics['ADE_3s'] = ADE_3s / len(loader.dataset)
+            dict_metrics['horizon01s'] = horizon01s / len(loader.dataset)
+            dict_metrics['horizon10s'] = horizon10s / len(loader.dataset)
+            dict_metrics['horizon20s'] = horizon20s / len(loader.dataset)
+            dict_metrics['horizon30s'] = horizon30s / len(loader.dataset)
+            dict_metrics['horizon40s'] = horizon40s / len(loader.dataset)
 
-        return dictMetrics
+        return dict_metrics
