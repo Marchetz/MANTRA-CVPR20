@@ -292,7 +292,6 @@ class Trainer():
                     scene_one_hot = scene_one_hot.cuda()
                 pred = self.mem_n2n(past, scene_one_hot)
 
-                # salva img con tutte le predizioni e img con quelle rimosse
                 for i in range(len(past)):
                     scene_i = scene[i]
                     pred_good = torch.Tensor().cuda()
@@ -302,7 +301,6 @@ class Trainer():
                         pred_one = pred[i][i_multiple]
                         dist = self.EuclDistance(pred_one, future[i, :])
                         listError.append(torch.mean(dist))
-                        # error_scene = 0
                         pred_one = pred[i][i_multiple]
                         pred_one_scene = pred_one * 2 + self.dim_clip
                         pred_one_scene = pred_one_scene.type(torch.LongTensor)
@@ -312,12 +310,10 @@ class Trainer():
                         else:
                             pred_situation = scene_i[pred_one_scene[:, 1], pred_one_scene[:, 0]]
 
-                        # Count points predicted outside from the road
+                        # Count points predicted outside from the road and remove bad predictions
                         error_scene = len(np.where(pred_situation != 1)[0])
                         if error_scene < 10:
                             pred_good = torch.cat((pred_good, pred_one.unsqueeze(0)), 0)
-                        # #scarta la predizione se è sopra di un certo errore
-                        # #faccio un nuova variabile e ci appendo quelle giuste
 
                     if len(pred_good) == 0:
                         pred_one = pred[i][0]
@@ -371,28 +367,20 @@ class Trainer():
                             if not os.path.exists(video_path + vec + num_vec):
                                 os.makedirs(video_path + vec + num_vec)
                             vehicle_path = video_path + vec + num_vec + '/'
-                            # prima della cancellazione
-                            # self.draw_track(past[i], future[i], scene[i], pred[i], present, vid, vec+num_vec, index_tracklet=index_track, num_epoch=epoch, saveFig=True,
-                            #                path=vehicle_path, remove_pred = '')
-                            # dopo la cancellazione
                             self.draw_track(past[i], future[i], scene[i], pred_good, present, vid, vec + num_vec,
                                             index_tracklet=index_track, num_epoch=epoch, save_fig=True,
                                             path=vehicle_path, remove_pred='_Remove')
-                            # #prime 10 traiettorie nel ranking
-                            # self.draw_track(past[i], future[i], scene[i], pred_good, present, vid, index_tracklet=index[i], num_epoch=epoch, saveFig=True,
-                            #                 path=vehicle_path, remove_pred = '_2Better', index_ranking=i_min)
                         else:
-                            # #pdb.set_trace()
                             if index_track.item() in self.test_index[vid][vec + num_vec]:
-                                # fai una cartella dove metti gli esempi salienti
+                                # Save interesting results
                                 if not os.path.exists(self.folder_test + 'highlights'):
                                     os.makedirs(self.folder_test + 'highlights')
                                 highlights_path = self.folder_test + 'highlights' + '/'
-                                # prima della cancellazione
+                                # before removing bad predictions
                                 self.draw_track(past[i], future[i], scene[i], pred[i], present, vid, vec + num_vec,
                                                 index_tracklet=index_track, num_epoch=epoch, save_fig=True,
                                                 path=highlights_path, remove_pred='_0noRemove')
-                                # dopo la cancellazione
+                                # after removing bad predictions
                                 self.draw_track(past[i], future[i], scene[i], pred_good, present, vid, vec + num_vec,
                                                 index_tracklet=index_track, num_epoch=epoch, save_fig=True,
                                                 path=highlights_path, remove_pred='_1YesRemove')
@@ -410,9 +398,12 @@ class Trainer():
         return dict_metrics
 
     def _train_single_epoch(self):
+        """
+        Training loop over the dataset for an epoch
+        :return: loss
+        """
         config = self.config
-        for step, (index, past, future, presents, videos, vehicles, number_vec, scene, scene_one_hot) in enumerate(
-                self.train_loader):
+        for step, (index, past, future, _, _, _, _, scene, scene_one_hot) in enumerate(self.train_loader):
             self.iterations += 1
             if config.rotation_aug:
                 for i_rotate in range(len(past)):
@@ -423,17 +414,14 @@ class Trainer():
                         cv2.transform(past[i_rotate].numpy().reshape(-1, 1, 2), rot_track).squeeze())
                     future[i_rotate] = torch.FloatTensor(
                         cv2.transform(future[i_rotate].numpy().reshape(-1, 1, 2), rot_track).squeeze())
-                    # scene[i_rotate] = torch.LongTensor(cv2.warpAffine(scene[i_rotate].numpy(), rot_scene, (scene[i_rotate].shape[0], scene[i_rotate].shape[1]), borderValue=0, flags=cv2.INTER_NEAREST))
                     scene_one_hot[i_rotate] = torch.LongTensor(
                         cv2.warpAffine(scene_one_hot[i_rotate].numpy(), rot_scene,
                                        (scene[i_rotate].shape[0], scene[i_rotate].shape[1]), borderValue=(1, 0, 0, 0),
                                        flags=cv2.INTER_NEAREST))
-
             past = Variable(past)
             future = Variable(future)
             scene_one_hot = Variable(scene_one_hot)
 
-            # pdb.set_trace()
             if config.cuda:
                 past = past.cuda()
                 future = future.cuda()
@@ -442,7 +430,7 @@ class Trainer():
 
             output = self.mem_n2n(past, scene_one_hot)
 
-            prediction_better = torch.Tensor().cuda()
+            best_pred = torch.Tensor().cuda()
             for i in range(len(past)):
                 list_error = []
                 for i_multiple in range(len(output[i])):
@@ -450,10 +438,10 @@ class Trainer():
                     dist = self.EuclDistance(pred_one, future[i, :])
                     list_error.append(torch.mean(dist))
                 i_min = np.argmin(list_error)
-                prediction_better = torch.cat((prediction_better, output[i][i_min].unsqueeze(0)), 0)
+                best_pred = torch.cat((best_pred, output[i][i_min].unsqueeze(0)), 0)
 
             # compute loss with best predicted trajectory
-            loss = self.criterionLoss(prediction_better, future)
+            loss = self.criterionLoss(best_pred, future)
 
             loss.backward()
             self.opt.step()
