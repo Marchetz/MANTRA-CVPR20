@@ -312,9 +312,11 @@ class Trainer:
 
                         # Count points predicted outside from the road and remove bad predictions
                         error_scene = len(np.where(pred_situation != 1)[0])
+                        # The predicted trajectory is allowed to go outside the road for max one second (10 frames)
                         if error_scene < 10:
                             pred_good = torch.cat((pred_good, pred_one.unsqueeze(0)), 0)
 
+                    # if all predictions are removed, take the most likely one
                     if len(pred_good) == 0:
                         pred_one = pred[i][0]
                         pred_good = torch.cat((pred_good, pred_one.unsqueeze(0)), 0)

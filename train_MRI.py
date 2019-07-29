@@ -13,8 +13,8 @@ def parse_config():
     parser.add_argument("--future_len", type=int, default=40)
     parser.add_argument("--preds", type=int, default=10)
     parser.add_argument("--model", default='pretrained_models/model_AE2019-05-23 15:50:06')
-    parser.add_argument("--memory_past", default='memory_past.pt')
-    parser.add_argument("--memory_fut", default='memory_fut.pt')
+    parser.add_argument("--memory_past", default='pretrained_models/memory_past.pt')
+    parser.add_argument("--memory_fut", default='pretrained_models/memory_fut.pt')
     parser.add_argument("--dim_embedding_key", type=int, default=48)
 
     parser.add_argument("--rotation_aug", default=True)

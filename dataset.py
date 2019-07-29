@@ -175,14 +175,11 @@ class TrackDataset(data.Dataset):
         train: [5, 9, 11, 13, 14, 17, 27, 28, 48, 51, 56, 57, 59, 60, 84, 91]
         test: [1, 2, 15, 18, 29, 32, 52, 70]
         """
-        # change: 0005 <-> 0029
 
         if train:
             desire_ids = [5, 9, 11, 13, 14, 17, 27, 28, 48, 51, 56, 57, 59, 60, 84, 91]
-            # desire_ids = [ 9, 11, 13, 14, 17, 27, 28, 29, 48, 51, 56, 57, 59, 60, 84, 91]
         else:
             desire_ids = [1, 2, 15, 18, 29, 32, 52, 70]
-            # desire_ids = [1, 2, 5, 15, 18, 32, 52, 70]
 
         tracklet_files = ['video_2011_09_26__2011_09_26_drive_' + str(x).zfill(4) + '_sync'
                           for x in desire_ids]
