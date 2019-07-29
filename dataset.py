@@ -4,11 +4,8 @@ import torch.utils.data as data
 from keras.utils import to_categorical
 import matplotlib.pyplot as plt
 import os
-import pdb
 from matplotlib.colors import LinearSegmentedColormap
 import cv2
-import matplotlib as mpl
-import time
 
 # scene! 0:background 1:street 2:sidewalk, 3:building 4: vegetation
 # colors = [(0, 0, 0), (0.87, 0.87, 0.87), (0.54, 0.54, 0.54), (0.49, 0.33, 0.16), (0.29, 0.57, 0.25)]
@@ -20,6 +17,9 @@ cm = LinearSegmentedColormap.from_list(
 
 
 class TrackDataset(data.Dataset):
+    """
+    Dataset class for KITTI
+    """
     def __init__(self, tracks, num_instances, num_labels, train, dim_clip):
 
         self.tracks = tracks
@@ -31,17 +31,16 @@ class TrackDataset(data.Dataset):
         self.vehicles = []      # 'Car'
         self.number_vec = []    # '4'
         self.index = []         # '50'
-        self.istances = []      # [num_instances,2]
+        self.instances = []     # [num_instances, 2]
         self.presents = []      # position in complete scene
-        self.labels = []        # [num_labels,2]
-
-        self.scene = []  # [dim_clip,dim_clip,1]
-        # self.scene_one_hot = []  # [dim_clip,dim_clip,4]
-        self.scene_crop = []
+        self.labels = []        # [num_labels, 2]
+        self.scene = []         # [dim_clip, dim_clip, 1]
+        self.scene_crop = []    # [dim_clip, dim_clip, 4]
 
         num_total = num_instances + num_labels
         self.video_split, self.ids_split_test = self.get_desire_track_files(train)
-        #
+
+        # Preload data
         for video in self.video_split:
             vehicles = self.tracks[video].keys()
             video_id = video[-9:-5]
@@ -65,7 +64,6 @@ class TrackDataset(data.Dataset):
                 for count in range(0, len_track, 1):
 
                     if len_track - count > num_total:
-
                         temp_istance = points[count:count + num_instances].copy()
                         temp_label = points[count + num_instances:count + num_total].copy()
 
@@ -88,37 +86,27 @@ class TrackDataset(data.Dataset):
                                                   int(origin[1]) * 2 - self.dim_clip:int(origin[1]) * 2 + self.dim_clip,
                                                   int(origin[0]) * 2 - self.dim_clip:int(origin[0]) * 2 + self.dim_clip]
 
-                        # scene_one_hot = to_categorical(scene_track_onehot_clip)
-
                         self.index.append(count + 19 + start_frame)
-                        self.istances.append(st)
+                        self.instances.append(st)
                         self.labels.append(fu)
                         self.presents.append(origin)
                         self.video_track.append(video_id)
                         self.vehicles.append(class_vec)
                         self.number_vec.append(num_vec)
                         self.scene.append(scene_track_clip)
-                        # self.scene_one_hot.append(scene_one_hot)
                         self.scene_crop.append(scene_track_onehot_clip)
 
         self.index = np.array(self.index)
-        self.istances = torch.FloatTensor(self.istances)
+        self.instances = torch.FloatTensor(self.instances)
         self.labels = torch.FloatTensor(self.labels)
         self.presents = torch.FloatTensor(self.presents)
-
-        # self.istances = np.array(self.istances)
-        # self.labels = np.array(self.labels)
-        # self.presents = np.array(self.presents)
 
         self.video_track = np.array(self.video_track)
         self.vehicles = np.array(self.vehicles)
         self.number_vec = np.array(self.number_vec)
         self.scene = np.array(self.scene)
 
-        # self.scene_one_hot = np.array(self.scene_one_hot)
-
     def save_scenes_with_tracks(self, folder_save):
-
         for video in self.video_split:
             fig = plt.figure()
             video_id = video[-9:-5]
@@ -126,18 +114,17 @@ class TrackDataset(data.Dataset):
             implot = plt.imshow(im, cmap=cm)
             for t in self.tracks[video].keys():
                 points = np.array(self.tracks[video][t]['trajectory']).T
-                if (len(points.shape) > 1):
+                if len(points.shape) > 1:
                     plt.plot(points[:, 0] * 2, points[:, 1] * 2)
             plt.savefig(folder_save + video_id + '.png')
             plt.close(fig)
 
     def save_dataset(self, folder_save):
-
-        for i in range(len(self.istances)):
+        for i in range(len(self.instances)):
             video = self.video_track[i]
             vehicle = self.vehicles[i]
             number = self.number_vec[i]
-            story = self.istances[i]
+            past = self.instances[i]
             future = self.labels[i]
             scene_track = self.scene[i]
 
@@ -152,16 +139,15 @@ class TrackDataset(data.Dataset):
                     os.makedirs(video_path + vehicle + number)
                 vehicle_path = video_path + '/' + vehicle + number + '/'
                 if sav == 'only_tracks':
-                    self.draw_track(story, future, index_tracklet=self.index[i], path=vehicle_path)
+                    self.draw_track(past, future, index_tracklet=self.index[i], path=vehicle_path)
                 if sav == 'only_scenes':
                     self.draw_scene(scene_track, index_tracklet=self.index[i], path=vehicle_path)
                 if sav == 'tracks_on_scene':
-                    self.draw_scene_with_track(story, scene_track, index_tracklet=self.index[i], future=future,
-                                               path=vehicle_path)
+                    self.draw_scene_with_track(past, scene_track, index_tracklet=self.index[i], future=future, path=vehicle_path)
 
-    def draw_track(self, story, future, index_tracklet, path):
-        story = story.cpu().numpy()
-        plt.plot(story[:, 0], -story[:, 1], c='blue', marker='o', markersize=1)
+    def draw_track(self, past, future, index_tracklet, path):
+        past = past.cpu().numpy()
+        plt.plot(past[:, 0], -past[:, 1], c='blue', marker='o', markersize=1)
         if future is not None:
             future = future.cpu().numpy()
             plt.plot(future[:, 0], -future[:, 1], c='green', marker='o', markersize=1)
@@ -170,29 +156,26 @@ class TrackDataset(data.Dataset):
         plt.close()
 
     def draw_scene(self, scene_track, index_tracklet, path):
-
         cv2.imwrite(path + str(index_tracklet) + '.png', scene_track)
 
     def draw_scene_with_track(self, story, scene_track, index_tracklet, future=None, path=''):
-
         plt.imshow(scene_track, cmap=cm)
         story = story.cpu().numpy()
         plt.plot(story[:, 0] * 2 + self.dim_clip, story[:, 1] * 2 + self.dim_clip, c='blue', marker='o', markersize=1)
         if future is not None:
             future = future.cpu().numpy()
-            plt.plot(future[:, 0] * 2 + self.dim_clip, future[:, 1] * 2 + self.dim_clip, c='green', marker='o',
-                     markersize=1)
+            plt.plot(future[:, 0] * 2 + self.dim_clip, future[:, 1] * 2 + self.dim_clip, c='green', marker='o', markersize=1)
         plt.savefig(path + str(index_tracklet) + '.png')
         plt.close()
 
-    def get_desire_track_files(self, train):
+    @staticmethod
+    def get_desire_track_files(train):
         """ Get videos only from the splits defined in DESIRE: https://arxiv.org/abs/1704.04394
         Splits obtained from the authors:
         all: [1, 2, 5, 9, 11, 13, 14, 15, 17, 18, 27, 28, 29, 32, 48, 51, 52, 56, 57, 59, 60, 70, 84, 91]
         train: [5, 9, 11, 13, 14, 17, 27, 28, 48, 51, 56, 57, 59, 60, 84, 91]
         test: [1, 2, 15, 18, 29, 32, 52, 70]
         """
-
         # change: 0005 <-> 0029
 
         if train:
@@ -207,10 +190,8 @@ class TrackDataset(data.Dataset):
         return tracklet_files, desire_ids
 
     def __getitem__(self, idx):
-        # return self.index[idx], self.istances[idx], self.labels[idx], self.presents[idx], self.video_track[idx], \
-        #        self.vehicles[idx], self.number_vec[idx], self.scene[idx], self.scene_one_hot[idx]
-        return self.index[idx], self.istances[idx], self.labels[idx], self.presents[idx], self.video_track[idx], \
+        return self.index[idx], self.instances[idx], self.labels[idx], self.presents[idx], self.video_track[idx], \
                self.vehicles[idx], self.number_vec[idx], self.scene[idx], to_categorical(self.scene_crop[idx], 4)
 
     def __len__(self):
-        return len(self.istances)
+        return len(self.instances)

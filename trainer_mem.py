@@ -295,12 +295,12 @@ class Trainer():
                 for i in range(len(past)):
                     scene_i = scene[i]
                     pred_good = torch.Tensor().cuda()
-                    listError = []
+                    list_error = []
 
                     for i_multiple in range(len(pred[i])):
                         pred_one = pred[i][i_multiple]
                         dist = self.EuclDistance(pred_one, future[i, :])
-                        listError.append(torch.mean(dist))
+                        list_error.append(torch.mean(dist))
                         pred_one = pred[i][i_multiple]
                         pred_one_scene = pred_one * 2 + self.dim_clip
                         pred_one_scene = pred_one_scene.type(torch.LongTensor)
@@ -319,7 +319,7 @@ class Trainer():
                         pred_one = pred[i][0]
                         pred_good = torch.cat((pred_good, pred_one.unsqueeze(0)), 0)
 
-                    i_min = np.argmin(listError)
+                    i_min = np.argmin(list_error)
                     dist = self.EuclDistance(pred[i][i_min], future[i, :])
 
                     eucl_mean += torch.mean(dist)

@@ -32,7 +32,7 @@ class Trainer():
         self.file = open(self.folder_test + "details.txt", "w")
         tracks = json.load(open("world_traj_kitti_with_intervals_correct.json"))
 
-        self.dim_clip = 170
+        self.dim_clip = 180
         print('Creating dataset...')
         self.data_train = dataset.TrackDataset(tracks,
                                                num_instances=config.past_len,
