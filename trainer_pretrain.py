@@ -30,7 +30,7 @@ class Trainer():
             os.makedirs(self.folder_test)
         self.folder_test = self.folder_test + '/'
         self.file = open(self.folder_test + "details.txt", "w")
-        tracks = json.load(open("world_traj_kitti_with_intervals_correct.json"))
+        tracks = json.load(open("world_traj_kitti.json"))
 
         self.dim_clip = 180
         print('Creating dataset...')

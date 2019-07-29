@@ -18,7 +18,7 @@ import dataset
 import test_index
 
 
-class Trainer():
+class Trainer:
     def __init__(self, config):
         """
         Trainer class for training the iterative refinement module (MRI)
@@ -33,7 +33,7 @@ class Trainer():
             os.makedirs(self.folder_test)
         self.folder_test = self.folder_test + '/'
         self.file = open(self.folder_test + "details.txt", "w")
-        tracks = json.load(open("world_traj_kitti_with_intervals_correct.json"))
+        tracks = json.load(open("world_traj_kitti.json"))
 
         self.dim_clip = 180
         print('creating dataset...')

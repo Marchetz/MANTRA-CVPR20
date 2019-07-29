@@ -17,7 +17,7 @@ def parse_config():
     parser.add_argument("--rotation_aug", default=True)
     parser.add_argument("--info", type=str, default='')
     parser.add_argument("--dim_embedding_key", type=int, default=48)
-    parser.add_argument("--track_file", default="world_traj_kitti_with_intervals_correct.json")
+    parser.add_argument("--track_file", default="world_traj_kitti.json")
     return parser.parse_args()
 
 

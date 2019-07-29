@@ -7,9 +7,6 @@ import os
 from matplotlib.colors import LinearSegmentedColormap
 import cv2
 
-# scene! 0:background 1:street 2:sidewalk, 3:building 4: vegetation
-# colors = [(0, 0, 0), (0.87, 0.87, 0.87), (0.54, 0.54, 0.54), (0.49, 0.33, 0.16), (0.29, 0.57, 0.25)]
-# scene! 0:background 1:street 2:sidewalk, 3: vegetation
 colors = [(0, 0, 0), (0.87, 0.87, 0.87), (0.54, 0.54, 0.54), (0.29, 0.57, 0.25)]
 cmap_name = 'scene_list'
 cm = LinearSegmentedColormap.from_list(
@@ -18,7 +15,9 @@ cm = LinearSegmentedColormap.from_list(
 
 class TrackDataset(data.Dataset):
     """
-    Dataset class for KITTI
+    Dataset class for KITTI.
+    The building class is merged into the background class
+    0:background 1:street 2:sidewalk, 3:building 4: vegetation ---> 0:background 1:street 2:sidewalk, 3: vegetation
     """
     def __init__(self, tracks, num_instances, num_labels, train, dim_clip):
 

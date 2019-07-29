@@ -71,8 +71,8 @@ class Validator():
         Perform test step and save results
         :return: None
         """
-        self.mem_n2n.memory_past = torch.load('memory_past_test.pt')
-        self.mem_n2n.memory_fut = torch.load('memory_fut_test.pt')
+        self.mem_n2n.memory_past = torch.load('memory_past.pt')
+        self.mem_n2n.memory_fut = torch.load('memory_fut.pt')
         dict_metrics_test = self.evaluate(self.test_loader, 1)
         self.save_results(dict_metrics_test, epoch=0)
 
@@ -204,8 +204,10 @@ class Validator():
                         # Count points predicted outside from the road and remove bad predictions
                         error_scene = len(np.where(pred_situation != 1)[0])
                         if error_scene < 10:
+                            # Trajectory outside from the road for more than a second
                             pred_good = torch.cat((pred_good, pred_one.unsqueeze(0)), 0)
 
+                    # if all predictions are removed, take the most likely one
                     if len(pred_good) == 0:
                         pred_one = pred[i][0]
                         pred_good = torch.cat((pred_good, pred_one.unsqueeze(0)), 0)

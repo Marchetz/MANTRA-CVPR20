@@ -1,8 +1,5 @@
 import argparse
 import evaluate_model
-import os
-os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
 
 
 def parse_config():
@@ -20,7 +17,7 @@ def parse_config():
     parser.add_argument("--saveImages_All", default=False)
     parser.add_argument("--info", type=str, default='')
     parser.add_argument("--dim_embedding_key", type=int, default=48)
-    parser.add_argument("--track_file", default="world_traj_kitti_with_intervals_correct.json")
+    parser.add_argument("--track_file", default="world_traj_kitti.json")
     return parser.parse_args()
 
 
