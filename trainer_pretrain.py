@@ -89,7 +89,7 @@ class Trainer():
         self.file.close()
 
         # Tensorboard summary: configuration
-        self.writer = SummaryWriter('runs-pretrain-new/' + self.name_test + '_' + config.info)
+        self.writer = SummaryWriter('runs-pretrain/' + self.name_test + '_' + config.info)
         self.writer.add_text('Training Configuration', 'model name: {}'.format(self.mem_n2n.name_model), 0)
         self.writer.add_text('Training Configuration', 'dataset train: {}'.format(len(self.data_train)), 0)
         self.writer.add_text('Training Configuration', 'dataset test: {}'.format(len(self.data_test)), 0)

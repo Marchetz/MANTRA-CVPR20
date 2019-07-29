@@ -21,8 +21,8 @@ import test_index
 class Trainer:
     def __init__(self, config):
         """
-        Trainer class for training the iterative refinement module (MRI)
-        :param config: configuration parameters (see train_MRI.py)
+        Trainer class for training the Iterative Refinement Module (IRM)
+        :param config: configuration parameters (see train_IRM.py)
         """
 
         self.test_index = test_index.dict_test
