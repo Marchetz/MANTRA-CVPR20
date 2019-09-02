@@ -1,5 +1,5 @@
 import argparse
-import trainer_mem
+import trainer_IRM
 
 
 def parse_config():
@@ -25,7 +25,7 @@ def parse_config():
 
 
 def main(config):
-    t = trainer_mem.Trainer(config)
+    t = trainer_IRM.Trainer(config)
     print('start training')
     t.fit()
 
