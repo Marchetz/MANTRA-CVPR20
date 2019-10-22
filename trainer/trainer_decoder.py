@@ -13,9 +13,11 @@ import torch.nn as nn
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from tensorboardX import SummaryWriter
-from models.model_memory_single import model_memory_single
+from models.model_decoder import model_decoder
 import dataset
+import dataset_invariance
 import test_index
+import pdb
 
 
 class Trainer:
@@ -25,19 +27,21 @@ class Trainer:
         :param config: configuration parameters (see train_IRM.py)
         """
 
+        self.config = config
+        self.iterations = 0
         self.test_index = test_index.dict_test
-        self.name_run = 'runs-mem-RNNSCENE/'
+        self.name_run = 'runs-ft-decoder/'
         self.name_test = str(datetime.datetime.now())[:19]
         self.folder_test = 'test/' + self.name_test + '_' + config.info
         if not os.path.exists(self.folder_test):
             os.makedirs(self.folder_test)
         self.folder_test = self.folder_test + '/'
         self.file = open(self.folder_test + "details.txt", "w")
-        tracks = json.load(open("world_traj_kitti.json"))
+        tracks = json.load(open("world_traj_kitti_with_intervals_correct.json"))
 
         self.dim_clip = 180
         print('creating dataset...')
-        self.data_train = dataset.TrackDataset(tracks,
+        self.data_train = dataset_invariance.TrackDataset(tracks,
                                                num_instances=config.past_len,
                                                num_labels=config.future_len,
                                                train=True,
@@ -56,7 +60,7 @@ class Trainer:
                                            shuffle=False
                                            )
 
-        self.data_test = dataset.TrackDataset(tracks,
+        self.data_test = dataset_invariance.TrackDataset(tracks,
                                               num_instances=config.past_len,
                                               num_labels=config.future_len,
                                               train=False,
@@ -82,8 +86,13 @@ class Trainer:
         self.max_epochs = config.max_epochs
 
         # load pretrained model and create memory_model
+        # self.model_pretrained_ae = torch.load(config.model_ae)
+        # self.model_pretrained_controller = torch.load(config.model_controller)
+        # self.mem_n2n = model_Memnet_controller(self.settings, self.model_pretrained_ae, self.model_pretrained_controller)
+
+
         self.model_pretrained = torch.load(config.model)
-        self.mem_n2n = model_memory_single(self.settings, self.model_pretrained)
+        self.mem_n2n = model_decoder(self.settings, self.model_pretrained)
         self.mem_n2n.past_len = config.past_len
         self.mem_n2n.future_len = config.future_len
 
@@ -91,12 +100,12 @@ class Trainer:
         self.EuclDistance = nn.PairwiseDistance(p=2)
         self.opt = torch.optim.Adam(self.mem_n2n.parameters(), lr=config.learning_rate)
         self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.opt, 0.5)
-        self.iterations = 0
+
         if config.cuda:
             self.criterionLoss = self.criterionLoss.cuda()
             self.mem_n2n = self.mem_n2n.cuda()
         self.start_epoch = 0
-        self.config = config
+
 
         # Write details to file
         self.write_details()
@@ -108,7 +117,6 @@ class Trainer:
         self.writer.add_text('Training Configuration', 'dataset train: ' + str(len(self.data_train)), 0)
         self.writer.add_text('Training Configuration', 'dataset test: ' + str(len(self.data_test)), 0)
         self.writer.add_text('Training Configuration', 'number of prediction: ' + str(self.num_prediction), 0)
-        self.writer.add_text('Training Configuration', 'rotation_aug: ' + str(config.rotation_aug), 0)
         self.writer.add_text('Training Configuration', 'batch_size: ' + str(self.config.batch_size), 0)
         self.writer.add_text('Training Configuration', 'learning rate init: ' + str(self.config.learning_rate), 0)
         self.writer.add_text('Training Configuration', 'dim_embedding_key: ' + str(self.settings["dim_embedding_key"]), 0)
@@ -117,7 +125,6 @@ class Trainer:
         """
         Serialize configuration parameters to file.
         """
-
         self.file.write("points of past track: " + str(self.config.past_len) + '\n')
         self.file.write("points of future track: " + str(self.config.future_len) + '\n')
         self.file.write("train size: " + str(len(self.data_train)) + '\n')
@@ -140,19 +147,21 @@ class Trainer:
             param.requires_grad = False
         for param in self.mem_n2n.encoder_fut.parameters():
             param.requires_grad = False
+        for param in self.mem_n2n.linear_controller.parameters():
+            param.requires_grad = False
+
+        #finetuning decoder
         for param in self.mem_n2n.decoder.parameters():
-            param.requires_grad = False
+            param.requires_grad = True
         for param in self.mem_n2n.FC_output.parameters():
-            param.requires_grad = False
+            param.requires_grad = True
 
         # Load memory
         print('loading memory')
-        self.mem_n2n.memory_past = torch.load(config.memory_past)
-        self.mem_n2n.memory_fut = torch.load(config.memory_fut)
+        self._memory_writing()
         print('memory updated')
 
         self.mem_n2n.memory_count = np.zeros((len(self.mem_n2n.memory_past), 1))
-
         step_results = [1, 10, 20, 40, 50, 60, 80, 100, 150, 200, 250, 300, 350, 400, 450, 490, 550, 600]
 
         # Main training loop
@@ -201,6 +210,7 @@ class Trainer:
         self.file.write("TEST:" + '\n')
         self.file.write("split test: " + str(self.data_test.ids_split_test) + '\n')
         self.file.write("num_predictions:" + str(self.config.preds) + '\n')
+        self.file.write("memory size: " + str(len(self.mem_n2n.memory_past)) + '\n')
         self.file.write("epoch: " + str(epoch) + '\n')
 
         self.file.write("error 1s: " + str(dict_metrics_test['horizon10s'].item()) + '\n')
@@ -225,7 +235,7 @@ class Trainer:
         self.file.close()
 
     def draw_track(self, past, future, scene_track, pred=None, video_id='', vec_id='', index_tracklet=0,
-                   save_fig=False, path='', remove_pred=''):
+                   save_fig=False, path=''):
 
         colors = [(0, 0, 0), (0.87, 0.87, 0.87), (0.54, 0.54, 0.54), (0.49, 0.33, 0.16), (0.29, 0.57, 0.25)]
         cmap_name = 'scene_cmap'
@@ -255,7 +265,7 @@ class Trainer:
         plt.axis('equal')
 
         if save_fig:
-            plt.savefig(path + video_id + '_' + vec_id + '_' + str(index_tracklet).zfill(3) + remove_pred + '.png')
+            plt.savefig(path + video_id + '_' + vec_id + '_' + str(index_tracklet).zfill(3) + '.png')
         plt.close(fig)
 
     def evaluate(self, loader, epoch=0):
@@ -265,13 +275,6 @@ class Trainer:
         :param epoch: epoch index (default: 0)
         :return: dictionary of performance metrics
         """
-        videos_json = {}
-        test_ids = self.data_test.ids_split_test
-
-        for ids in test_ids:
-            videos_json['video_' + str(ids).zfill(4)] = {}
-            for i_temp in range(self.data_test.video_length[str(ids).zfill(4)]):
-                videos_json['video_' + str(ids).zfill(4)]['frame_' + str(i_temp).zfill(3)] = {}
 
         with torch.no_grad():
             dict_metrics = {}
@@ -282,44 +285,20 @@ class Trainer:
             list_err3 = []
             list_err4 = []
 
-            for step, (index, past, future, presents, videos, vehicles, number_vec, scene, scene_one_hot) in enumerate(loader):
+            for step, (index, past, future, presents, angle_presents, videos, vehicles, number_vec, scene, scene_one_hot) in enumerate(loader):
                 past = Variable(past)
                 future = Variable(future)
-                scene_one_hot = Variable(scene_one_hot)
                 if self.config.cuda:
                     past = past.cuda()
                     future = future.cuda()
-                    scene_one_hot = scene_one_hot.cuda()
-                pred = self.mem_n2n(past, scene_one_hot)
+                pred = self.mem_n2n(past)
 
                 for i in range(len(past)):
-                    scene_i = scene[i]
-                    pred_good = torch.Tensor().cuda()
                     list_error = []
-
                     for i_multiple in range(len(pred[i])):
                         pred_one = pred[i][i_multiple]
                         dist = self.EuclDistance(pred_one, future[i, :])
                         list_error.append(torch.mean(dist))
-                        pred_one = pred[i][i_multiple]
-                        pred_one_scene = pred_one * 2 + self.dim_clip
-                        pred_one_scene = pred_one_scene.type(torch.LongTensor)
-
-                        if 1 in (pred_one_scene > 359).reshape(-1):
-                            pred_situation = torch.ones(20)
-                        else:
-                            pred_situation = scene_i[pred_one_scene[:, 1], pred_one_scene[:, 0]]
-
-                        # Count points predicted outside from the road and remove bad predictions
-                        error_scene = len(np.where(pred_situation != 1)[0])
-                        # The predicted trajectory is allowed to go outside the road for max one second (10 frames)
-                        if error_scene < 10:
-                            pred_good = torch.cat((pred_good, pred_one.unsqueeze(0)), 0)
-
-                    # if all predictions are removed, take the most likely one
-                    if len(pred_good) == 0:
-                        pred_one = pred[i][0]
-                        pred_good = torch.cat((pred_good, pred_one.unsqueeze(0)), 0)
 
                     i_min = np.argmin(list_error)
                     dist = self.EuclDistance(pred[i][i_min], future[i, :])
@@ -344,23 +323,7 @@ class Trainer:
                     index_track = index[i].numpy()
                     present = presents[i].cpu()
 
-                    # json
-                    st = past[i].cpu() + present
-                    fu = future[i].cpu() + present
-                    pr = pred_good.cpu() + present
-                    videos_json['video_' + vid]['frame_' + str(index_track).zfill(3)][vec + num_vec] = {}
-                    videos_json['video_' + vid]['frame_' + str(index_track).zfill(3)][vec + num_vec][
-                        'pred'] = pr.tolist()
-                    videos_json['video_' + vid]['frame_' + str(index_track).zfill(3)][vec + num_vec][
-                        'past'] = st.tolist()
-                    videos_json['video_' + vid]['frame_' + str(index_track).zfill(3)][vec + num_vec][
-                        'fut'] = fu.tolist()
-                    videos_json['video_' + vid]['frame_' + str(index_track).zfill(3)][vec + num_vec][
-                        'present'] = present.tolist()
-
                     if loader == self.test_loader and self.config.saveImages:
-                        with open(self.folder_test + 'preds_test.json', 'w') as outfile:
-                            json.dump(videos_json, outfile)
 
                         if self.config.saveImages_All:
                             if not os.path.exists(self.folder_test + vid):
@@ -369,9 +332,9 @@ class Trainer:
                             if not os.path.exists(video_path + vec + num_vec):
                                 os.makedirs(video_path + vec + num_vec)
                             vehicle_path = video_path + vec + num_vec + '/'
-                            self.draw_track(past[i], future[i], scene[i], pred_good, present, vid, vec + num_vec,
-                                            index_tracklet=index_track, num_epoch=epoch, save_fig=True,
-                                            path=vehicle_path, remove_pred='_Remove')
+                            self.draw_track(past[i], future[i], scene[i], pred[i], vid, vec + num_vec,
+                                            index_tracklet=index_track, save_fig=True,
+                                            path=vehicle_path)
                         else:
                             if index_track.item() in self.test_index[vid][vec + num_vec]:
                                 # Save interesting results
@@ -379,15 +342,11 @@ class Trainer:
                                     os.makedirs(self.folder_test + 'highlights')
                                 highlights_path = self.folder_test + 'highlights' + '/'
                                 # before removing bad predictions
-                                self.draw_track(past[i], future[i], scene[i], pred[i], present, vid, vec + num_vec,
-                                                index_tracklet=index_track, num_epoch=epoch, save_fig=True,
-                                                path=highlights_path, remove_pred='_0noRemove')
-                                # after removing bad predictions
-                                self.draw_track(past[i], future[i], scene[i], pred_good, present, vid, vec + num_vec,
-                                                index_tracklet=index_track, num_epoch=epoch, save_fig=True,
-                                                path=highlights_path, remove_pred='_1YesRemove')
+                                self.draw_track(past[i], future[i], scene[i], pred[i], vid, vec + num_vec,
+                                                index_tracklet=index_track, save_fig=True,
+                                                path=highlights_path)
 
-            dict_metrics['eucl_mean'] = eucl_mean / len(loader.dataset)
+            dict_metrics['euclMean'] = eucl_mean / len(loader.dataset)
             dict_metrics['ADE_1s'] = ADE_1s / len(loader.dataset)
             dict_metrics['ADE_2s'] = ADE_2s / len(loader.dataset)
             dict_metrics['ADE_3s'] = ADE_3s / len(loader.dataset)
@@ -405,32 +364,15 @@ class Trainer:
         :return: loss
         """
         config = self.config
-        for step, (index, past, future, _, _, _, _, scene, scene_one_hot) in enumerate(self.train_loader):
+        for step, (index, past, future, _, _, _, _, _, scene, scene_one_hot) in enumerate(self.train_loader):
             self.iterations += 1
-            if config.rotation_aug:
-                for i_rotate in range(len(past)):
-                    angle = randint(0, 360)
-                    rot_track = cv2.getRotationMatrix2D((0, 0), angle, 1)
-                    rot_scene = cv2.getRotationMatrix2D((self.dim_clip, self.dim_clip), angle, 1)
-                    past[i_rotate] = torch.FloatTensor(
-                        cv2.transform(past[i_rotate].numpy().reshape(-1, 1, 2), rot_track).squeeze())
-                    future[i_rotate] = torch.FloatTensor(
-                        cv2.transform(future[i_rotate].numpy().reshape(-1, 1, 2), rot_track).squeeze())
-                    scene_one_hot[i_rotate] = torch.LongTensor(
-                        cv2.warpAffine(scene_one_hot[i_rotate].numpy(), rot_scene,
-                                       (scene[i_rotate].shape[0], scene[i_rotate].shape[1]), borderValue=(1, 0, 0, 0),
-                                       flags=cv2.INTER_NEAREST))
             past = Variable(past)
             future = Variable(future)
-            scene_one_hot = Variable(scene_one_hot)
-
             if config.cuda:
                 past = past.cuda()
                 future = future.cuda()
-                scene_one_hot = scene_one_hot.cuda()
             self.opt.zero_grad()
-
-            output = self.mem_n2n(past, scene_one_hot)
+            output = self.mem_n2n(past)
 
             best_pred = torch.Tensor().cuda()
             for i in range(len(past)):
@@ -444,12 +386,30 @@ class Trainer:
 
             # compute loss with best predicted trajectory
             loss = self.criterionLoss(best_pred, future)
-
             loss.backward()
             self.opt.step()
             self.writer.add_scalar('loss/loss_total', loss, self.iterations)
 
         return loss.item()
+
+
+    def _memory_writing(self):
+        """
+        writing in the memory with controller (loop over all train dataset)
+        :return: loss
+        """
+        self.mem_n2n.init_memory(self.data_train)
+        config = self.config
+        #for i in range(writing_iteration):
+        with torch.no_grad():
+            for step, (index, past, future, _, _, _, _, _, _, _) in enumerate(self.train_loader):
+                self.iterations += 1
+                past = Variable(past)
+                future = Variable(future)
+                if config.cuda:
+                    past = past.cuda()
+                    future = future.cuda()
+                self.mem_n2n.write_in_memory(past, future)
 
     def save_dataset(self):
         self.data_test.save_dataset(self.folder_test)
