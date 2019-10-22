@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-
+import pdb
 
 class model_encdec(nn.Module):
     """
@@ -25,7 +25,7 @@ class model_encdec(nn.Module):
 
         # temporal encoding
         self.conv_past = nn.Conv1d(channel_in, channel_out, dim_kernel, stride=1, padding=1)
-        self.conv_fut = nn.Conv1d(channel_in, channel_out, 1, stride=1, padding=1)
+        self.conv_fut = nn.Conv1d(channel_in, channel_out, dim_kernel, stride=1, padding=1)
 
         # encoder-decoder
         self.encoder_past = nn.GRU(input_gru, self.dim_embedding_key, 1, batch_first=True)
@@ -66,6 +66,7 @@ class model_encdec(nn.Module):
         :param future: future trajectory
         :return: decoded future
         """
+
         dim_batch = past.size()[0]
         zero_padding = torch.zeros(1, dim_batch, self.dim_embedding_key * 2).cuda()
         prediction = torch.Tensor().cuda()
