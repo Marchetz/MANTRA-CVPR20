@@ -50,7 +50,7 @@ file_model: models/model_memory_IRM.py
 # Test
 ```bash
 test.py --model pretrained_complete_model_path   --withMRI True/False --memory_saved True/False
---memory_saved: if yes, the memory in /pretrained_models/memory_saved/ are loaded 
+--memory_saved: if yes, the memories (past and memory) in /pretrained_models/memory_saved/ are loaded 
 ```
 This script generates metrics on the KITTI dataset using a trained models. We compute Average Displacement Error (ADE)
 and Horizon Error (Error@K).
