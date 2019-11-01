@@ -222,7 +222,10 @@ class TrackDataset(data.Dataset):
 
     def __getitem__(self, idx):
         return self.index[idx], self.instances[idx], self.labels[idx], self.presents[idx], self.angle_presents[idx], self.video_track[idx], \
-               self.vehicles[idx], self.number_vec[idx], self.scene[idx], self.scene_crop[idx]
+               self.vehicles[idx], self.number_vec[idx], self.scene[idx], to_categorical(self.scene_crop[idx], 4), #self.scene_crop[idx]
+
+        # return self.index[idx], self.instances[idx], self.labels[idx], self.presents[idx], self.angle_presents[idx], self.video_track[idx], \
+        #        self.vehicles[idx], self.number_vec[idx], self.scene[idx], self.scene_crop[idx]
     #to_categorical(self.scene_crop[idx], 4)
 
     def __len__(self):

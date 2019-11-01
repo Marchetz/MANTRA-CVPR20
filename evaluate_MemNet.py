@@ -230,7 +230,8 @@ class Validator():
                         list_error_single_pred_2s.append(round(dist[19].item(), 3))
                         list_error_single_pred_3s.append(round(dist[29].item(), 3))
                         list_error_single_pred_4s.append(round(dist[39].item(), 3))
-                    i_min = np.argmin(list_error_single_pred_mean)
+                    # i_min = np.argmin(list_error_single_pred_mean)
+                    i_min = np.argmin(list_error_single_pred_4s)
                     ind_better[i_min] += 1
 
                     dist = self.EuclDistance(pred[i][i_min], future[i, :])

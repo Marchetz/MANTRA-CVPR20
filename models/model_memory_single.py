@@ -157,7 +157,7 @@ class model_memory_single(nn.Module):
             ind = index_max[:, i_track]
 
             # Accumulate usage statistics
-            self.memory_count[ind] += 1
+            # self.memory_count[ind] += 1
 
             info_future = self.memory_fut[ind]
             info_total = torch.cat((state_past, info_future.unsqueeze(0)), 2)

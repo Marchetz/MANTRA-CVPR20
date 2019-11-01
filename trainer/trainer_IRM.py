@@ -89,7 +89,7 @@ class Trainer:
         self.criterionLoss = nn.MSELoss()
         self.EuclDistance = nn.PairwiseDistance(p=2)
         self.opt = torch.optim.Adam(self.mem_n2n.parameters(), lr=config.learning_rate)
-        self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.opt, 0.5)
+        # self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.opt, 0.5)
         self.iterations = 0
         if config.cuda:
             self.criterionLoss = self.criterionLoss.cuda()
@@ -138,10 +138,10 @@ class Trainer:
             param.requires_grad = False
         for param in self.mem_n2n.encoder_fut.parameters():
             param.requires_grad = False
-        for param in self.mem_n2n.decoder.parameters():
-            param.requires_grad = False
-        for param in self.mem_n2n.FC_output.parameters():
-            param.requires_grad = False
+        # for param in self.mem_n2n.decoder.parameters():
+        #     param.requires_grad = False
+        # for param in self.mem_n2n.FC_output.parameters():
+        #     param.requires_grad = False
 
         # Load memory
         print('loading memory')
@@ -149,7 +149,7 @@ class Trainer:
         print('memory updated')
 
         self.mem_n2n.memory_count = np.zeros((len(self.mem_n2n.memory_past), 1))
-        step_results = [1, 10, 20, 40, 50, 60, 80, 100, 150, 200, 250, 300, 350, 400, 450, 490, 550, 600]
+        step_results = [1, 10, 20, 30, 40, 50, 60, 80, 100, 150, 200, 250, 300, 350, 400, 450, 490, 550, 600]
 
         # Main training loop
         for epoch in range(self.start_epoch, config.max_epochs):
@@ -165,7 +165,7 @@ class Trainer:
                 print('start test')
                 start_test = time.time()
                 dict_metrics_test = self.evaluate(self.test_loader, epoch + 1)
-                dict_metrics_train = self.evaluate(self.train_loader, epoch + 1)
+                # dict_metrics_train = self.evaluate(self.train_loader, epoch + 1)
                 end_test = time.time()
                 print('Test took: {}'.format(end_test - start_test))
 
@@ -179,12 +179,12 @@ class Trainer:
                 self.writer.add_scalar('dimension_memory/memory', len(self.mem_n2n.memory_past), epoch)
 
                 # Tensorboard summary: train
-                self.writer.add_scalar('accuracy_train/euclMean', dict_metrics_train['euclMean'], epoch)
-                self.writer.add_scalar('accuracy_train/Horizon01s', dict_metrics_train['horizon01s'], epoch)
-                self.writer.add_scalar('accuracy_train/Horizon10s', dict_metrics_train['horizon10s'], epoch)
-                self.writer.add_scalar('accuracy_train/Horizon20s', dict_metrics_train['horizon20s'], epoch)
-                self.writer.add_scalar('accuracy_train/Horizon30s', dict_metrics_train['horizon30s'], epoch)
-                self.writer.add_scalar('accuracy_train/Horizon40s', dict_metrics_train['horizon40s'], epoch)
+                # self.writer.add_scalar('accuracy_train/euclMean', dict_metrics_train['euclMean'], epoch)
+                # self.writer.add_scalar('accuracy_train/Horizon01s', dict_metrics_train['horizon01s'], epoch)
+                # self.writer.add_scalar('accuracy_train/Horizon10s', dict_metrics_train['horizon10s'], epoch)
+                # self.writer.add_scalar('accuracy_train/Horizon20s', dict_metrics_train['horizon20s'], epoch)
+                # self.writer.add_scalar('accuracy_train/Horizon30s', dict_metrics_train['horizon30s'], epoch)
+                # self.writer.add_scalar('accuracy_train/Horizon40s', dict_metrics_train['horizon40s'], epoch)
 
                 # Save model checkpoint
                 torch.save(self.mem_n2n, self.folder_test + 'model' + self.name_test)
@@ -411,7 +411,8 @@ class Trainer:
                 for i_multiple in range(len(output[i])):
                     pred_one = output[i][i_multiple]
                     dist = self.EuclDistance(pred_one, future[i, :])
-                    list_error.append(torch.mean(dist))
+                    # list_error.append(torch.mean(dist))
+                    list_error.append(dist[-1])
                 i_min = np.argmin(list_error)
                 best_pred = torch.cat((best_pred, output[i][i_min].unsqueeze(0)), 0)
             # compute loss with best predicted trajectory
