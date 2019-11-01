@@ -43,18 +43,18 @@ class model_memory_IRM(nn.Module):
         self.relu = nn.ReLU()
         self.softmax = nn.Softmax()
 
-        #writing controller
+        # writing controller
         self.linear_controller = model_pretrained.linear_controller
 
         # scene: input shape (batch, classes, 360, 360)
         self.convScene_1 = nn.Sequential(
-            nn.Conv2d(4, 16, kernel_size=5, stride=2, padding=2),
-            nn.ReLU())
+            nn.Conv2d(4, 8, kernel_size=4, stride=2, padding=2),
+            nn.ReLU(), nn.BatchNorm2d(8))
         self.convScene_2 = nn.Sequential(
-            nn.Conv2d(16, 32, kernel_size=5, stride=1, padding=2),
-            nn.ReLU())
+            nn.Conv2d(8, 16, kernel_size=2, stride=1, padding=2),
+            nn.ReLU(), nn.BatchNorm2d(16))
 
-        self.RNN_scene = nn.GRU(32, self.dim_embedding_key, 1, batch_first=True)
+        self.RNN_scene = nn.GRU(16, self.dim_embedding_key, 1, batch_first=True, dropout=0.8)
 
         # refinement fc layer
         self.fc_refine = nn.Linear(self.dim_embedding_key, self.future_len*2)
@@ -159,7 +159,7 @@ class model_memory_IRM(nn.Module):
                 input_dec = zero_padding
 
             # Iteratively refine predictions using context
-            for i_refine in range(4):
+            for i_refine in range(1):
                 pred_map = prediction_single + 90
                 pred_map = pred_map.unsqueeze(2)
                 indices = pred_map.permute(0, 2, 1, 3)
