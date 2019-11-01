@@ -52,7 +52,7 @@ class TrackDataset(data.Dataset):
             track_ego = np.array(self.tracks[video]['track_0']['trajectory']).T
             print('video: ' + video_id)
             path_scene = 'maps/2011_09_26__2011_09_26_drive_' + video_id + '_sync_map.png'
-            scene_track = cv2.imread(path_scene, 0) - 1
+            scene_track = cv2.imread(path_scene, 0)
             scene_track_onehot = scene_track.copy()
 
             # Remove building class
