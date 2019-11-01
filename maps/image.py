@@ -19,7 +19,6 @@ pdb.set_trace()
 for f in files:
 
     image = cv2.imread(f, 0)
-    cv2.imwrite('image/' + f[:-4] + '.png', image)
     image_copy = image.copy()
     image_copy[np.where(image_copy == 2)] = 0
     image_copy[np.where(image_copy == 3)] = 0
