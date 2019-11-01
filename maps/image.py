@@ -26,7 +26,7 @@ for f in files:
     image_copy[np.where(image_copy == 4)] = 0
     closing = cv2.morphologyEx(image_copy, cv2.MORPH_CLOSE, kernel)
     image[np.where(closing == 1)] = 1
-    cv2.imwrite('png_closing/' + f[:-4] + '.png', image)
+    cv2.imwrite('closing/' + f[:-4] + '.png', image)
 
     #to visualize with colors
     #plt.imshow(image,cm)
