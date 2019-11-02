@@ -187,6 +187,8 @@ class Validator():
         :return: dictionary of performance metrics
         """
 
+        self.mem_n2n.eval()
+
         videos_json = {}
         test_ids = self.data_test.ids_split_test
         for ids in test_ids:
