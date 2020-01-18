@@ -135,7 +135,7 @@ class model_decoder(nn.Module):
 
         # Cosine similarity and memory read
         past_normalized = F.normalize(self.memory_past, p=2, dim=1)
-        state_normalized = F.normalize(state_past.squeeze(), p=2, dim=1)
+        state_normalized = F.normalize(state_past.squeeze(dim=0), p=2, dim=1)
         self.weight_read = torch.matmul(past_normalized, state_normalized.transpose(0, 1)).transpose(0, 1)
         self.index_max = torch.sort(self.weight_read, descending=True)[1].cpu()[:,:self.num_prediction]
         present = present_temp.repeat_interleave(self.num_prediction, dim=0)
@@ -183,7 +183,8 @@ class model_decoder(nn.Module):
 
         # Cosine similarity and memory read
         past_normalized = F.normalize(self.memory_past, p=2, dim=1)
-        state_normalized = F.normalize(state_past.squeeze(), p=2, dim=1)
+        # state_normalized = F.normalize(state_past.squeeze(), p=2, dim=1)
+        state_normalized = F.normalize(state_past.squeeze(dim=0), p=2, dim=1)
         weight_read = torch.matmul(past_normalized, state_normalized.transpose(0, 1)).transpose(0, 1)
         index_max = torch.sort(weight_read, descending=True)[1].cpu()
 
@@ -234,8 +235,10 @@ class model_decoder(nn.Module):
         #index_writing = np.where(writing_prob.cpu() > 0)[0]
         index_writing = np.where( writing_prob.cpu() > 0.5)[0]
 
+
         past_to_write = state_past.squeeze()[index_writing]
         future_to_write = state_fut.squeeze()[index_writing]
+
 
         self.memory_past = torch.cat((self.memory_past, past_to_write), 0)
         self.memory_fut = torch.cat((self.memory_fut, future_to_write), 0)

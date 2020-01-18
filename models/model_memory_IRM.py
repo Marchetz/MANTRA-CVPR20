@@ -147,7 +147,9 @@ class model_memory_IRM(nn.Module):
         past_normalized = F.normalize(self.memory_past, p=2, dim=1)
         state_normalized = F.normalize(state_past.squeeze(), p=2, dim=1)
         self.weight_read = torch.matmul(past_normalized, state_normalized.transpose(0,1)).transpose(0,1)
+
         self.index_max = torch.sort(self.weight_read, descending=True)[1].cpu()[:, :self.num_prediction]
+
 
         present = present_temp.repeat_interleave(self.num_prediction, dim=0)
         state_past = state_past.repeat_interleave(self.num_prediction, dim=1)
@@ -171,9 +173,11 @@ class model_memory_IRM(nn.Module):
             present = coords_next
             input_dec = zero_padding
 
-        #pdb.set_trace()
+
+        #pdb.set_<trace()
         # Iteratively refine predictions using context
         for i_refine in range(4):
+
             pred_map = prediction + 90
             pred_map = pred_map.unsqueeze(2)
             indices = pred_map.permute(0, 2, 1, 3)
@@ -186,8 +190,10 @@ class model_memory_IRM(nn.Module):
             output_rnn, state_rnn = self.RNN_scene(output, state_rnn)
             prediction_refine = self.fc_refine(state_rnn).view(-1, 40, 2)
             prediction = prediction + prediction_refine
+
         #pdb.set_trace()
         prediction = prediction.view(dim_batch, self.num_prediction, 40, 2)
+
 
         return prediction
 

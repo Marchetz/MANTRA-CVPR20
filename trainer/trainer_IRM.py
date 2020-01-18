@@ -159,10 +159,14 @@ class Trainer:
         print('writing time: ' + str(end-start))
 
         self.mem_n2n.memory_count = np.zeros((len(self.mem_n2n.memory_past), 1))
+
         step_results = [1, 10, 20, 30, 40, 50, 60, 80, 90, 100, 120, 150, 170, 200, 250, 300, 350, 400, 450, 490, 550, 600]
+
 
         # Main training loop
         for epoch in range(self.start_epoch, config.max_epochs):
+            self.mem_n2n.train()
+            # self._memory_writing()
 
             print('epoch: ' + str(epoch))
             start = time.time()
@@ -197,7 +201,9 @@ class Trainer:
                 self.writer.add_scalar('accuracy_train/Horizon40s', dict_metrics_train['horizon40s'], epoch)
 
                 # Save model checkpoint
-                torch.save(self.mem_n2n, self.folder_test + 'model_epoch' + str(epoch)  + self.name_test)
+                # torch.save(self.mem_n2n, self.folder_test + 'model' + self.name_test)
+                torch.save(self.mem_n2n, self.folder_test + 'model_' + str(dict_metrics_test['horizon40s'].detach().cpu().numpy()) + '_epoch_' + str(epoch) + '_' + self.name_test)
+
 
                 self.save_results(dict_metrics_test, epoch=epoch + 1)
 
@@ -286,6 +292,9 @@ class Trainer:
         :param epoch: epoch index (default: 0)
         :return: dictionary of performance metrics
         """
+
+        self.mem_n2n.eval()
+
         videos_json = {}
 
         test_ids = self.data_test.ids_split_test
