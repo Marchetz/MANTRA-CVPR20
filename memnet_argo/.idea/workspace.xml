@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ChangeListManager">
+    <list default="true" id="7a041c7c-a161-44ec-b792-681bda82a441" name="Default Changelist" comment="">
+      <change beforePath="$PROJECT_DIR$/dataset/argoverse-api/demo_usage/argoverse_forecasting_tutorial.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/dataset/argoverse-api/demo_usage/argoverse_forecasting_tutorial.ipynb" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dataset/argoverse-api/demo_usage/argoverse_map_tutorial.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/dataset/argoverse-api/demo_usage/argoverse_map_tutorial.ipynb" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dataset/argoverse-api/demo_usage/argoverse_tracking_tutorial.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/dataset/argoverse-api/demo_usage/argoverse_tracking_tutorial.ipynb" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dataset/argoverse-api/demo_usage/competition_forecasting_tutorial.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/dataset/argoverse-api/demo_usage/competition_forecasting_tutorial.ipynb" afterDir="false" />
+    </list>
+    <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Python Script" />
+      </list>
+    </option>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/dataset/argoverse-forecasting" />
+  </component>
+  <component name="ProjectId" id="1WKm4o1FjjGNTNHFmJw5MP1vEgn" />
+  <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
+  <component name="PropertiesComponent">
+    <property name="last_opened_file_path" value="$PROJECT_DIR$/../Spectral-Trajectory-Prediction-master" />
+    <property name="settings.editor.selected.configurable" value="com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable" />
+  </component>
+  <component name="RunDashboard">
+    <option name="ruleStates">
+      <list>
+        <RuleState>
+          <option name="name" value="ConfigurationTypeDashboardGroupingRule" />
+        </RuleState>
+        <RuleState>
+          <option name="name" value="StatusDashboardGroupingRule" />
+        </RuleState>
+      </list>
+    </option>
+  </component>
+  <component name="SvnConfiguration">
+    <configuration />
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="7a041c7c-a161-44ec-b792-681bda82a441" name="Default Changelist" comment="" />
+      <created>1578906472017</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1578906472017</updated>
+    </task>
+    <servers />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+</project>
