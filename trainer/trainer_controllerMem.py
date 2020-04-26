@@ -16,8 +16,6 @@ import io
 from PIL import Image
 from torchvision.transforms import ToTensor
 import time
-import pdb
-
 
 class Trainer():
     def __init__(self, config):
@@ -27,6 +25,7 @@ class Trainer():
         """
 
         self.name_test = str(datetime.datetime.now())[:19]
+        self.folder_tensorboard = 'runs/runs-createMem/'
         self.folder_test = 'test/' + self.name_test + '_' + config.info
         if not os.path.exists(self.folder_test):
             os.makedirs(self.folder_test)
@@ -71,7 +70,7 @@ class Trainer():
         }
         self.max_epochs = config.max_epochs
         # load pretrained model and create memory model
-        self.model_pretrained = torch.load(config.model)
+        self.model_pretrained = torch.load(config.model_ae)
         self.mem_n2n = model_controllerMem(self.settings, self.model_pretrained)
         self.EuclDistance = nn.PairwiseDistance(p=2)
         self.criterionLoss = nn.MSELoss()
@@ -85,7 +84,7 @@ class Trainer():
         self.config = config
 
         # Tensorboard summary: configuration
-        self.writer = SummaryWriter('runs-createMem/' + self.name_test + '_' + config.info)
+        self.writer = SummaryWriter(self.folder_tensorboard + self.name_test + '_' + config.info)
         self.writer.add_text('Training Configuration', 'model name: {}'.format(self.mem_n2n.name_model), 0)
         self.writer.add_text('Training Configuration', 'dataset train: {}'.format(len(self.data_train)), 0)
         self.writer.add_text('Training Configuration', 'dataset test: {}'.format(len(self.data_test)), 0)
@@ -135,27 +134,18 @@ class Trainer():
                 print('start test')
                 start_test = time.time()
                 dict_metrics_test = self.evaluate(self.test_loader, epoch + 1)
-                # dict_metrics_train = self.evaluate(self.train_loader, epoch + 1)
                 end_test = time.time()
                 print('Test took: {}'.format(end_test - start_test))
+
                 # Tensorboard summary: test
                 self.writer.add_scalar('accuracy_test/euclMean', dict_metrics_test['eucl_mean'], epoch)
-                self.writer.add_scalar('accuracy_test/Horizon01s', dict_metrics_test['horizon01s'], epoch)
                 self.writer.add_scalar('accuracy_test/Horizon10s', dict_metrics_test['horizon10s'], epoch)
                 self.writer.add_scalar('accuracy_test/Horizon20s', dict_metrics_test['horizon20s'], epoch)
                 self.writer.add_scalar('accuracy_test/Horizon30s', dict_metrics_test['horizon30s'], epoch)
                 self.writer.add_scalar('accuracy_test/Horizon40s', dict_metrics_test['horizon40s'], epoch)
 
-                # Tensorboard summary: train
-                # self.writer.add_scalar('accuracy_train/euclMean', dict_metrics_train['eucl_mean'], epoch)
-                # self.writer.add_scalar('accuracy_train/Horizon01s', dict_metrics_train['horizon01s'], epoch)
-                # self.writer.add_scalar('accuracy_train/Horizon10s', dict_metrics_train['horizon10s'], epoch)
-                # self.writer.add_scalar('accuracy_train/Horizon20s', dict_metrics_train['horizon20s'], epoch)
-                # self.writer.add_scalar('accuracy_train/Horizon30s', dict_metrics_train['horizon30s'], epoch)
-                # self.writer.add_scalar('accuracy_train/Horizon40s', dict_metrics_train['horizon40s'], epoch)
-
                 # Save model checkpoint
-                torch.save(self.mem_n2n, self.folder_test + 'model' + self.name_test)
+                torch.save(self.mem_n2n, self.folder_test + 'model_controller_epoch_' + str(epoch) + '_' + self.name_test)
 
                 # print memory on tensorboard
                 mem_size = self.mem_n2n.memory_past.shape[0]
@@ -178,7 +168,7 @@ class Trainer():
                 self.writer.add_histogram(name, param.data, epoch)
 
         # Save final trained model
-        torch.save(self.mem_n2n, self.folder_test + 'model_controller' + self.name_test)
+        torch.save(self.mem_n2n, self.folder_test + 'model_controller_' + self.name_test)
 
     def save_plot_weight(self, epoch):
 
@@ -205,7 +195,7 @@ class Trainer():
         self.writer.add_image('controller_plot/function', image.squeeze(0), epoch)
         plt.close(fig)
 
-    def save_results(self, dict_metrics_test, dict_metrics_train=None, epoch=0):
+    def save_results(self, dict_metrics_test, epoch=0):
         """
         Serialize results
         :param dict_metrics_test: dictionary with test metrics
@@ -229,24 +219,14 @@ class Trainer():
         self.file.write("ADE 3s: " + str(dict_metrics_test['ADE_3s'].item()) + '\n')
         self.file.write("ADE 4s: " + str(dict_metrics_test['eucl_mean'].item()) + '\n')
 
-        if dict_metrics_train is not None:
-            self.file.write("TRAIN:" + '\n')
-            self.file.write("error 1s: " + str(dict_metrics_train['horizon10s'].item()) + '\n')
-            self.file.write("error 2s: " + str(dict_metrics_train['horizon20s'].item()) + '\n')
-            self.file.write("error 3s: " + str(dict_metrics_train['horizon30s'].item()) + '\n')
-            self.file.write("error 4s: " + str(dict_metrics_train['horizon40s'].item()) + '\n')
-            self.file.write("ADE 1s: " + str(dict_metrics_train['ADE_1s'].item()) + '\n')
-            self.file.write("ADE 2s: " + str(dict_metrics_train['ADE_2s'].item()) + '\n')
-            self.file.write("ADE 3s: " + str(dict_metrics_train['ADE_3s'].item()) + '\n')
-            self.file.write("ADE 4s: " + str(dict_metrics_train['eucl_mean'].item()) + '\n')
         self.file.close()
 
-    def draw_track(self, past, future, scene_track, pred=None, video_id='', vec_id='', index_tracklet=0,
-                   save_fig=False, path='', remove_pred=''):
+    def draw_track(self, past, future, scene_track, pred=None, video_id='', vec_id='', index_tracklet=0, num_epoch=0):
 
         colors = [(0, 0, 0), (0.87, 0.87, 0.87), (0.54, 0.54, 0.54), (0.49, 0.33, 0.16), (0.29, 0.57, 0.25)]
         cmap_name = 'scene_cmap'
         cm = LinearSegmentedColormap.from_list(cmap_name, colors, N=5)
+
         fig = plt.figure()
         plt.imshow(scene_track, cmap=cm)
         colors = pl.cm.Reds(np.linspace(1, 0.3, pred.shape[0]))
@@ -265,8 +245,15 @@ class Trainer():
         plt.plot(future_scene[:, 0], future_scene[:, 1], c='green', linewidth=1, marker='o', markersize=1)
         plt.title('video: ' + video_id + ', vehicle: ' + vec_id + ',index: ' + str(index_tracklet))
         plt.axis('equal')
-        if save_fig:
-            plt.savefig(path + video_id + '_' + vec_id + '_' + str(index_tracklet).zfill(3) + remove_pred + '.png')
+
+        # Save figure in Tensorboard
+        buf = io.BytesIO()
+        plt.savefig(buf, format='jpeg')
+        buf.seek(0)
+        image = Image.open(buf)
+        image = ToTensor()(image).unsqueeze(0)
+        self.writer.add_image('Image_test/track_' + video_id + '_' + vec_id + '_' + str(index_tracklet).zfill(3),
+                              image.squeeze(0), num_epoch)
         plt.close(fig)
 
     def evaluate(self, loader, epoch=0):
@@ -280,7 +267,7 @@ class Trainer():
 
         with torch.no_grad():
             dict_metrics = {}
-            eucl_mean = ADE_1s = ADE_2s = ADE_3s = horizon01s = horizon10s = horizon20s = horizon30s = horizon40s = 0
+            eucl_mean = ADE_1s = ADE_2s = ADE_3s = horizon10s = horizon20s = horizon30s = horizon40s = 0
 
             for step, (index, past, future, presents, angle_presents, videos, vehicles, number_vec, scene,
                        scene_one_hot) in enumerate(loader):
@@ -302,17 +289,29 @@ class Trainer():
                 ADE_2s += torch.sum(torch.mean(min_distances[:, :20], 1))
                 ADE_3s += torch.sum(torch.mean(min_distances[:, :30], 1))
 
-                horizon01s += torch.sum(min_distances[:, 0])
                 horizon10s += torch.sum(min_distances[:, 9])
                 horizon20s += torch.sum(min_distances[:, 19])
                 horizon30s += torch.sum(min_distances[:, 29])
                 horizon40s += torch.sum(min_distances[:, 39])
 
+                for i in range(len(past)):
+                    vid = videos[i]
+                    vec = vehicles[i]
+                    num_vec = number_vec[i]
+                    index_track = index[i].numpy()
+                    if loader == self.test_loader and self.config.saveImages:
+                        if index_track.item() in self.test_index[vid][vec + num_vec]:
+                            # Save interesting results
+                            # if not os.path.exists(self.folder_test + 'highlights'):
+                            #     os.makedirs(self.folder_test + 'highlights')
+                            # highlights_path = self.folder_test + 'highlights' + '/'
+                            self.draw_track(past[i], future[i], scene[i], pred[i], vid, vec + num_vec,
+                                            index_tracklet=index_track, num_epoch=epoch)
+
             dict_metrics['eucl_mean'] = eucl_mean / len(loader.dataset)
             dict_metrics['ADE_1s'] = ADE_1s / len(loader.dataset)
             dict_metrics['ADE_2s'] = ADE_2s / len(loader.dataset)
             dict_metrics['ADE_3s'] = ADE_3s / len(loader.dataset)
-            dict_metrics['horizon01s'] = horizon01s / len(loader.dataset)
             dict_metrics['horizon10s'] = horizon10s / len(loader.dataset)
             dict_metrics['horizon20s'] = horizon20s / len(loader.dataset)
             dict_metrics['horizon30s'] = horizon30s / len(loader.dataset)

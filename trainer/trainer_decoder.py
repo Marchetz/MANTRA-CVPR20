@@ -14,11 +14,11 @@ from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from tensorboardX import SummaryWriter
 from models.model_decoder import model_decoder
-import dataset
+from torchvision.transforms import ToTensor
+import io
+from PIL import Image
 import dataset_invariance
 import test_index
-import pdb
-
 
 class Trainer:
     def __init__(self, config):
@@ -37,7 +37,7 @@ class Trainer:
             os.makedirs(self.folder_test)
         self.folder_test = self.folder_test + '/'
         self.file = open(self.folder_test + "details.txt", "w")
-        tracks = json.load(open("world_traj_kitti_with_intervals_correct.json"))
+        tracks = json.load(open(config.track_file))
 
         self.dim_clip = 180
         print('creating dataset...')
@@ -89,7 +89,6 @@ class Trainer:
         # self.model_pretrained_ae = torch.load(config.model_ae)
         # self.model_pretrained_controller = torch.load(config.model_controller)
         # self.mem_n2n = model_Memnet_controller(self.settings, self.model_pretrained_ae, self.model_pretrained_controller)
-
 
         self.model_pretrained = torch.load(config.model)
         self.mem_n2n = model_decoder(self.settings, self.model_pretrained)
@@ -183,7 +182,6 @@ class Trainer:
 
                 # Tensorboard summary: test
                 self.writer.add_scalar('accuracy_test/euclMean', dict_metrics_test['euclMean'], epoch)
-                self.writer.add_scalar('accuracy_test/Horizon01s', dict_metrics_test['horizon01s'], epoch)
                 self.writer.add_scalar('accuracy_test/Horizon10s', dict_metrics_test['horizon10s'], epoch)
                 self.writer.add_scalar('accuracy_test/Horizon20s', dict_metrics_test['horizon20s'], epoch)
                 self.writer.add_scalar('accuracy_test/Horizon30s', dict_metrics_test['horizon30s'], epoch)
@@ -235,7 +233,7 @@ class Trainer:
         self.file.close()
 
     def draw_track(self, past, future, scene_track, pred=None, video_id='', vec_id='', index_tracklet=0,
-                   save_fig=False, path=''):
+                   num_epoch=0):
 
         colors = [(0, 0, 0), (0.87, 0.87, 0.87), (0.54, 0.54, 0.54), (0.49, 0.33, 0.16), (0.29, 0.57, 0.25)]
         cmap_name = 'scene_cmap'
@@ -244,15 +242,11 @@ class Trainer:
 
         plt.imshow(scene_track, cmap=cm)
         colors = pl.cm.Reds(np.linspace(1, 0.3, pred.shape[0]))
-
         past = past.cpu().numpy()
         future = future.cpu().numpy()
-
         story_scene = past * 2 + self.dim_clip
         future_scene = future * 2 + self.dim_clip
-
         plt.plot(story_scene[:, 0], story_scene[:, 1], c='blue', linewidth=1, marker='o', markersize=1)
-
         if pred is not None:
             for i_p in reversed(range(pred.shape[0])):
                 pred_i = pred[i_p].cpu().numpy()
@@ -260,12 +254,16 @@ class Trainer:
                 plt.plot(pred_scene[:, 0], pred_scene[:, 1], color=colors[i_p], linewidth=0.5, marker='o', markersize=0.5)
 
         plt.plot(future_scene[:, 0], future_scene[:, 1], c='green', linewidth=1, marker='o', markersize=1)
-
         plt.title('video: ' + video_id + ', vehicle: ' + vec_id + ',index: ' + str(index_tracklet))
         plt.axis('equal')
-
-        if save_fig:
-            plt.savefig(path + video_id + '_' + vec_id + '_' + str(index_tracklet).zfill(3) + '.png')
+        # Save figure in Tensorboard
+        buf = io.BytesIO()
+        plt.savefig(buf, format='jpeg')
+        buf.seek(0)
+        image = Image.open(buf)
+        image = ToTensor()(image).unsqueeze(0)
+        self.writer.add_image('Image_test/track_' + video_id + '_' + vec_id + '_' + str(index_tracklet).zfill(3),
+                              image.squeeze(0), num_epoch)
         plt.close(fig)
 
     def evaluate(self, loader, epoch=0):
@@ -278,7 +276,7 @@ class Trainer:
 
         with torch.no_grad():
             dict_metrics = {}
-            eucl_mean = ADE_1s = ADE_2s = ADE_3s = horizon01s = horizon10s = horizon20s = horizon30s = horizon40s = 0
+            eucl_mean = ADE_1s = ADE_2s = ADE_3s = horizon10s = horizon20s = horizon30s = horizon40s = 0
 
             list_err1 = []
             list_err2 = []
@@ -311,7 +309,6 @@ class Trainer:
                     list_err2.append(dist[19].cpu())
                     list_err3.append(dist[29].cpu())
                     list_err4.append(dist[39].cpu())
-                    horizon01s += dist[0]
                     horizon10s += dist[9]
                     horizon20s += dist[19]
                     horizon30s += dist[29]
@@ -350,7 +347,6 @@ class Trainer:
             dict_metrics['ADE_1s'] = ADE_1s / len(loader.dataset)
             dict_metrics['ADE_2s'] = ADE_2s / len(loader.dataset)
             dict_metrics['ADE_3s'] = ADE_3s / len(loader.dataset)
-            dict_metrics['horizon01s'] = horizon01s / len(loader.dataset)
             dict_metrics['horizon10s'] = horizon10s / len(loader.dataset)
             dict_metrics['horizon20s'] = horizon20s / len(loader.dataset)
             dict_metrics['horizon30s'] = horizon30s / len(loader.dataset)

@@ -158,8 +158,11 @@ class Trainer():
             loss = self._train_single_epoch()
             print('Loss: {}'.format(loss))
 
-            if (epoch + 1) % 2 == 0:
+            if (epoch + 1) % 20 == 0:
+                print('test on train dataset')
                 dict_metrics_train = self.evaluate(self.train_loader, epoch + 1)
+
+                print('test on TEST dataset')
                 dict_metrics_test = self.evaluate(self.test_loader, epoch + 1)
 
                 # Tensorboard summary: learning rate

@@ -22,7 +22,7 @@ def parse_config():
 
 def main(config):
     v = evaluate_MemNet.Validator(config)
-    print('start test')
+    print('start evaluation')
     v.test_model()
 
 if __name__ == "__main__":

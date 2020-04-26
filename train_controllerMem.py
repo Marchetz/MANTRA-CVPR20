@@ -11,11 +11,12 @@ def parse_config():
     parser.add_argument("--past_len", type=int, default=20)
     parser.add_argument("--future_len", type=int, default=40)
     parser.add_argument("--preds", type=int, default=5)
-    parser.add_argument("--model", default='pretrained_models/model_AE/model_ae2019-10-11 13:15:33')
-
-    parser.add_argument("--info", type=str, default='')
     parser.add_argument("--dim_embedding_key", type=int, default=48)
-    parser.add_argument("--track_file", default="world_traj_kitti_with_intervals_correct.json")
+
+    parser.add_argument("--model_ae", default='pretrained_models/model_AE/model_ae2019-10-11 13:15:33')
+    parser.add_argument("--track_file", default="kitti_dataset.json", help="dataset file")
+    parser.add_argument("--info", type=str, default='', help='Name of training. '
+                                                             'It will use in tensorboard log and test folder')
     return parser.parse_args()
 
 def main(config):
