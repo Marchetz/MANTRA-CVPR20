@@ -1,5 +1,5 @@
 import argparse
-from trainer import trainer_pretrain
+from trainer import trainer_ae
 
 
 def parse_config():
@@ -9,17 +9,18 @@ def parse_config():
     parser.add_argument("--learning_rate", type=int, default=0.0001)
     parser.add_argument("--max_epochs", type=int, default=1000)
 
-    parser.add_argument("--past_len", type=int, default=20)
-    parser.add_argument("--future_len", type=int, default=40)
-
-    parser.add_argument("--info", type=str, default='')
+    parser.add_argument("--past_len", type=int, default=20, help="length of past (in timesteps)")
+    parser.add_argument("--future_len", type=int, default=40, help="length of future (in timesteps)")
     parser.add_argument("--dim_embedding_key", type=int, default=48)
-    parser.add_argument("--track_file", default="world_traj_kitti_with_intervals_correct.json")
+
+    parser.add_argument("--track_file", default="kitti_dataset.json", help="dataset file")
+    parser.add_argument("--info", type=str, default='', help='Name of training. '
+                                                             'It will use in tensorboard log and test folder')
     return parser.parse_args()
 
 
 def main(config):
-    t = trainer_pretrain.Trainer(config)
+    t = trainer_ae.Trainer(config)
     print('start training autoencoder')
     t.fit()
 

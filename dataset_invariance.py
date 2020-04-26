@@ -2,14 +2,14 @@
 import numpy as np
 import torch
 import torch.utils.data as data
-from keras.utils import to_categorical
 import matplotlib.pyplot as plt
 import os
 from matplotlib.colors import LinearSegmentedColormap
 import cv2
 import math
-import pdb
-import test_remove_index
+
+#TODO: check!
+#import test_remove_index
 
 colors = [(0, 0, 0), (0.87, 0.87, 0.87), (0.54, 0.54, 0.54), (0.29, 0.57, 0.25)]
 cmap_name = 'scene_list'
@@ -24,7 +24,7 @@ class TrackDataset(data.Dataset):
     """
     def __init__(self, tracks, num_instances, num_labels, train, dim_clip):
 
-        self.remove_index = test_remove_index.index    #index of examples with noise map
+        #self.remove_index = test_remove_index.index    #index of examples with noise map
         self.tracks = tracks
         self.dim_clip = dim_clip
         self.video_length = {}
@@ -74,10 +74,9 @@ class TrackDataset(data.Dataset):
                 len_track = len(points)
                 self.video_length[video_id] = len(track_ego)
                 for count in range(0, len_track, 1):
-                    #pdb.set_trace()
                     if len_track - count > num_total:
-                        if train == False and count + 19 + start_frame in self.remove_index[video_id][class_vec + num_vec]:
-                             continue
+                        # if train == False and count + 19 + start_frame in self.remove_index[video_id][class_vec + num_vec]:
+                        #      continue
                         temp_istance = points[count:count + num_instances].copy()
                         temp_label = points[count + num_instances:count + num_total].copy()
 
@@ -104,9 +103,9 @@ class TrackDataset(data.Dataset):
                         unit_y_axis = torch.Tensor([0, -1])
                         vector = st[-5]
                         if vector[0] > 0.0:
-                            angle = np.rad2deg(self.angle_between(vector, unit_y_axis))
+                            angle = np.rad2deg(self.angle_vectors(vector, unit_y_axis))
                         else:
-                            angle = -np.rad2deg(self.angle_between(vector, unit_y_axis))
+                            angle = -np.rad2deg(self.angle_vectors(vector, unit_y_axis))
                         matRot_track = cv2.getRotationMatrix2D((0, 0), angle, 1)
                         matRot_scene = cv2.getRotationMatrix2D((self.dim_clip, self.dim_clip), angle, 1)
 
@@ -128,6 +127,7 @@ class TrackDataset(data.Dataset):
                         self.number_vec.append(num_vec)
                         self.scene.append(scene_track_clip)
                         self.scene_crop.append(scene_track_onehot_clip)
+
 
         self.index = np.array(self.index)
         self.instances = torch.FloatTensor(self.instances)
@@ -210,7 +210,6 @@ class TrackDataset(data.Dataset):
         train: [5, 9, 11, 13, 14, 17, 27, 28, 48, 51, 56, 57, 59, 60, 84, 91]
         test: [1, 2, 15, 18, 29, 32, 52, 70]
         """
-
         if train:
             desire_ids = [5, 9, 11, 13, 14, 17, 27, 28, 48, 51, 56, 57, 59, 60, 84, 91]
         else:
@@ -222,11 +221,8 @@ class TrackDataset(data.Dataset):
 
     def __getitem__(self, idx):
         return self.index[idx], self.instances[idx], self.labels[idx], self.presents[idx], self.angle_presents[idx], self.video_track[idx], \
-               self.vehicles[idx], self.number_vec[idx], self.scene[idx], to_categorical(self.scene_crop[idx], 4), #self.scene_crop[idx]
+               self.vehicles[idx], self.number_vec[idx], self.scene[idx], np.eye(4, dtype=np.float32)[self.scene_crop[idx]]
 
-        # return self.index[idx], self.instances[idx], self.labels[idx], self.presents[idx], self.angle_presents[idx], self.video_track[idx], \
-        #        self.vehicles[idx], self.number_vec[idx], self.scene[idx], self.scene_crop[idx]
-    #to_categorical(self.scene_crop[idx], 4)
 
     def __len__(self):
         return len(self.instances)
@@ -235,8 +231,8 @@ class TrackDataset(data.Dataset):
         """ Returns the unit vector of the vector.  """
         return vector / np.linalg.norm(vector)
 
-    def angle_between(self, v1, v2):
-
+    def angle_vectors(self, v1, v2):
+        """ Returns angle between two vectors.  """
         v1_u = self.unit_vector(v1)
         v2_u = self.unit_vector(v2)
         angle = np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
@@ -244,4 +240,5 @@ class TrackDataset(data.Dataset):
             return 0.0
         else:
             return angle
+
 
