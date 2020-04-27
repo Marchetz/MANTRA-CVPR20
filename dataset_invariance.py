@@ -7,9 +7,10 @@ import os
 from matplotlib.colors import LinearSegmentedColormap
 import cv2
 import math
+import pdb
 
 #TODO: check!
-#import test_remove_index
+import test_remove_index
 
 colors = [(0, 0, 0), (0.87, 0.87, 0.87), (0.54, 0.54, 0.54), (0.29, 0.57, 0.25)]
 cmap_name = 'scene_list'
@@ -22,11 +23,11 @@ class TrackDataset(data.Dataset):
     The building class is merged into the background class
     0:background 1:street 2:sidewalk, 3:building 4: vegetation ---> 0:background 1:street 2:sidewalk, 3: vegetation
     """
-    def __init__(self, tracks, num_instances, num_labels, train, dim_clip):
+    def __init__(self, tracks, len_past, len_future, train, dim_clip):
 
-        #self.remove_index = test_remove_index.index    #index of examples with noise map
-        self.tracks = tracks
-        self.dim_clip = dim_clip
+        self.remove_index = test_remove_index.index    #index of examples with noise map
+        self.tracks = tracks      # dataset dict
+        self.dim_clip = dim_clip  # dim_clip*2 is the dimension of scene (pixel)
         self.video_length = {}
         self.structure = {}       # dictionary to save the results for each vehicles in evaluation phase
         self.is_train = train
@@ -35,14 +36,14 @@ class TrackDataset(data.Dataset):
         self.vehicles = []        # 'Car'
         self.number_vec = []      # '4'
         self.index = []           # '50'
-        self.instances = []       # [num_instances, 2]
+        self.pasts = []           # [len_past, 2]
         self.presents = []        # position in complete scene
         self.angle_presents = []  # trajectory angle in complete scene
-        self.labels = []          # [num_labels, 2]
+        self.futures = []         # [len_future, 2]
         self.scene = []           # [dim_clip, dim_clip, 1]
         self.scene_crop = []      # [dim_clip, dim_clip, 4]
 
-        num_total = num_instances + num_labels
+        num_total = len_past + len_future
         self.video_split, self.ids_split_test = self.get_desire_track_files(train)
 
         # Preload data
@@ -69,27 +70,28 @@ class TrackDataset(data.Dataset):
                 self.structure[video_id][class_vec + num_vec]['HE_2s'] = 0
                 self.structure[video_id][class_vec + num_vec]['HE_3s'] = 0
                 self.structure[video_id][class_vec + num_vec]['HE_4s'] = 0
+
                 start_frame = tracks[video][vec]['start']
                 points = np.array(tracks[video][vec]['trajectory']).T
                 len_track = len(points)
                 self.video_length[video_id] = len(track_ego)
                 for count in range(0, len_track, 1):
                     if len_track - count > num_total:
-                        # if train == False and count + 19 + start_frame in self.remove_index[video_id][class_vec + num_vec]:
-                        #      continue
-                        temp_istance = points[count:count + num_instances].copy()
-                        temp_label = points[count + num_instances:count + num_total].copy()
+                        if train == False and count + 19 + start_frame in self.remove_index[video_id][class_vec + num_vec]:
+                            continue
+                        temp_past = points[count:count + len_past].copy()
+                        temp_future = points[count + len_past:count + num_total].copy()
 
-                        origin = temp_istance[-1]
-                        if np.var(temp_istance[:, 0]) < 0.1 and np.var(temp_istance[:, 1]) < 0.1:
-                            st = np.zeros((20, 2))
+                        origin = temp_past[-1]
+                        if np.var(temp_past[:, 0]) < 0.1 and np.var(temp_past[:, 1]) < 0.1:
+                            temp_past = np.zeros((20, 2))
                         else:
-                            st = temp_istance - origin
+                            temp_past = temp_past - origin
 
-                        if np.var(temp_istance[:, 0]) < 0.1 and np.var(temp_istance[:, 1]) < 0.1:
-                            fu = np.zeros((40, 2))
+                        if np.var(temp_future[:, 0]) < 0.1 and np.var(temp_future[:, 1]) < 0.1:
+                            temp_future = np.zeros((40, 2))
                         else:
-                            fu = temp_label - origin
+                            temp_future = temp_future - origin
 
                         scene_track_clip = scene_track[
                                            int(origin[1]) * 2 - self.dim_clip:int(origin[1]) * 2 + self.dim_clip,
@@ -101,7 +103,7 @@ class TrackDataset(data.Dataset):
 
                         #rotation invariance
                         unit_y_axis = torch.Tensor([0, -1])
-                        vector = st[-5]
+                        vector = temp_past[-5]
                         if vector[0] > 0.0:
                             angle = np.rad2deg(self.angle_vectors(vector, unit_y_axis))
                         else:
@@ -109,8 +111,8 @@ class TrackDataset(data.Dataset):
                         matRot_track = cv2.getRotationMatrix2D((0, 0), angle, 1)
                         matRot_scene = cv2.getRotationMatrix2D((self.dim_clip, self.dim_clip), angle, 1)
 
-                        st_rot = cv2.transform(st.reshape(-1, 1, 2), matRot_track).squeeze()
-                        fu_rot = cv2.transform(fu.reshape(-1, 1, 2), matRot_track).squeeze()
+                        past_rot = cv2.transform(temp_past.reshape(-1, 1, 2), matRot_track).squeeze()
+                        future_rot = cv2.transform(temp_future.reshape(-1, 1, 2), matRot_track).squeeze()
                         scene_track_onehot_clip = cv2.warpAffine(scene_track_onehot_clip, matRot_scene,
                                            (scene_track_onehot_clip.shape[0], scene_track_onehot_clip.shape[1]),
                                            borderValue=0,
@@ -118,8 +120,8 @@ class TrackDataset(data.Dataset):
 
                         self.structure[video_id][class_vec + num_vec]['num_examples'] += 1
                         self.index.append(count + 19 + start_frame)
-                        self.instances.append(st_rot)
-                        self.labels.append(fu_rot)
+                        self.pasts.append(past_rot)
+                        self.futures.append(future_rot)
                         self.presents.append(origin)
                         self.angle_presents.append(angle)
                         self.video_track.append(video_id)
@@ -128,28 +130,27 @@ class TrackDataset(data.Dataset):
                         self.scene.append(scene_track_clip)
                         self.scene_crop.append(scene_track_onehot_clip)
 
-
         self.index = np.array(self.index)
-        self.instances = torch.FloatTensor(self.instances)
-        self.labels = torch.FloatTensor(self.labels)
+        self.pasts = torch.FloatTensor(self.pasts)
+        self.futures = torch.FloatTensor(self.futures)
         self.presents = torch.FloatTensor(self.presents)
         self.video_track = np.array(self.video_track)
         self.vehicles = np.array(self.vehicles)
         self.number_vec = np.array(self.number_vec)
         self.scene = np.array(self.scene)
 
-    def save_scenes_with_tracks(self, folder_save):
-        for video in self.video_split:
-            fig = plt.figure()
-            video_id = video[-9:-5]
-            im = plt.imread('maps/2011_09_26__2011_09_26_drive_' + video_id + '_sync_map.png')
-            implot = plt.imshow(im, cmap=cm)
-            for t in self.tracks[video].keys():
-                points = np.array(self.tracks[video][t]['trajectory']).T
-                if len(points.shape) > 1:
-                    plt.plot(points[:, 0] * 2, points[:, 1] * 2)
-            plt.savefig(folder_save + video_id + '.png')
-            plt.close(fig)
+    # def save_scenes_with_tracks(self, folder_save):
+    #     for video in self.video_split:
+    #         fig = plt.figure()
+    #         video_id = video[-9:-5]
+    #         im = plt.imread('maps/2011_09_26__2011_09_26_drive_' + video_id + '_sync_map.png')
+    #         implot = plt.imshow(im, cmap=cm)
+    #         for t in self.tracks[video].keys():
+    #             points = np.array(self.tracks[video][t]['trajectory']).T
+    #             if len(points.shape) > 1:
+    #                 plt.plot(points[:, 0] * 2, points[:, 1] * 2)
+    #         plt.savefig(folder_save + video_id + '.png')
+    #         plt.close(fig)
 
     def save_dataset(self, folder_save):
 
@@ -158,7 +159,7 @@ class TrackDataset(data.Dataset):
             vehicle = self.vehicles[i]
             number = self.number_vec[i]
             past = self.instances[i]
-            future = self.labels[i]
+            future = self.futures[i]
             scene_track = self.scene_crop[i]
 
             #saving_list = ['only_tracks', 'only_scenes', 'tracks_on_scene']
@@ -177,10 +178,10 @@ class TrackDataset(data.Dataset):
                 if sav == 'only_scenes':
                     self.draw_scene(scene_track, index_tracklet=self.index[i], path=vehicle_path)
                 if sav == 'tracks_on_scene':
-                    self.draw_scene_with_track(past, scene_track, index_tracklet=self.index[i], future=future, path=vehicle_path)
+                    self.draw_track_in_scene(past, scene_track, index_tracklet=self.index[i], future=future, path=vehicle_path)
 
     def draw_track(self, past, future, index_tracklet, path):
-        past = past.cpu().numpy()
+        #past = past.cpu().numpy()
         plt.plot(past[:, 0], -past[:, 1], c='blue', marker='o', markersize=1)
         if future is not None:
             future = future.cpu().numpy()
@@ -192,13 +193,12 @@ class TrackDataset(data.Dataset):
     def draw_scene(self, scene_track, index_tracklet, path):
         cv2.imwrite(path + str(index_tracklet) + '.png', scene_track)
 
-    def draw_scene_with_track(self, story, scene_track, index_tracklet, future=None, path=''):
+    def draw_track_in_scene(self, story, scene_track, index_tracklet, future=None, path=''):
         plt.imshow(scene_track, cmap=cm)
-        story = story.cpu().numpy()
-        plt.plot(story[:, 0] * 2 + self.dim_clip, story[:, 1] * 2 + self.dim_clip, c='blue', marker='o', markersize=1)
-        #if future is not None:
+        #story = story.cpu().numpy()
         #future = future.cpu().numpy()
-        #plt.plot(future[:, 0] * 2 + self.dim_clip, future[:, 1] * 2 + self.dim_clip, c='green', marker='o', markersize=1)
+        plt.plot(story[:, 0] * 2 + self.dim_clip, story[:, 1] * 2 + self.dim_clip, c='blue', marker='o', markersize=1)
+        plt.plot(future[:, 0] * 2 + self.dim_clip, future[:, 1] * 2 + self.dim_clip, c='green', marker='o', markersize=1)
         plt.savefig(path + str(index_tracklet) + '.png')
         plt.close()
 
@@ -219,15 +219,8 @@ class TrackDataset(data.Dataset):
                           for x in desire_ids]
         return tracklet_files, desire_ids
 
-    def __getitem__(self, idx):
-        return self.index[idx], self.instances[idx], self.labels[idx], self.presents[idx], self.angle_presents[idx], self.video_track[idx], \
-               self.vehicles[idx], self.number_vec[idx], self.scene[idx], np.eye(4, dtype=np.float32)[self.scene_crop[idx]]
 
-
-    def __len__(self):
-        return len(self.instances)
-
-    def unit_vector(self,vector):
+    def unit_vector(self, vector):
         """ Returns the unit vector of the vector.  """
         return vector / np.linalg.norm(vector)
 
@@ -240,5 +233,12 @@ class TrackDataset(data.Dataset):
             return 0.0
         else:
             return angle
+
+    def __len__(self):
+        return self.pasts.shape[0]
+
+    def __getitem__(self, idx):
+        return self.index[idx], self.pasts[idx], self.futures[idx], self.presents[idx], self.angle_presents[idx], self.video_track[idx], \
+               self.vehicles[idx], self.number_vec[idx], self.scene[idx], np.eye(4, dtype=np.float32)[self.scene_crop[idx]]
 
 

@@ -18,7 +18,7 @@ import io
 from PIL import Image
 from torchvision.transforms import ToTensor
 import dataset_invariance
-import test_index
+import index_qualitative
 import pdb
 import tqdm
 
@@ -30,7 +30,7 @@ class Trainer:
         :param config: configuration parameters (see train_IRM.py)
         """
 
-        self.test_index = test_index.dict_test
+        self.index_qualitative = index_qualitative.dict_test
         self.name_run = 'runs/runs-IRM/'
         self.name_test = str(datetime.datetime.now())[:19]
         self.folder_test = 'test/test_IRM/' + self.name_test + '_' + config.info
@@ -309,7 +309,7 @@ class Trainer:
                     index_track = index[i].numpy()
                     angle = angle_presents[i].cpu()
                     if loader == self.test_loader and self.config.saveImages:
-                        if index_track.item() in self.test_index[vid][vec + num_vec]:
+                        if index_track.item() in self.index_qualitative[vid][vec + num_vec]:
                             self.draw_track(past[i], future[i], scene[i], pred[i], angle, vid, vec + num_vec,
                                             index_tracklet=index_track, num_epoch=epoch)
 
