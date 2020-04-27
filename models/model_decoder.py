@@ -11,7 +11,7 @@ class model_decoder(nn.Module):
     """
     Memory Network model with learnable writing controller. [Work in progress]
     """
-    def __init__(self, settings, model_pretrained):
+    def __init__(self, settings, model_pretrained, model_controller):
         super(model_decoder, self).__init__()
         self.name_model = 'train_decoder_with_memory'
 
@@ -44,7 +44,7 @@ class model_decoder(nn.Module):
         self.relu = nn.ReLU()
         self.softmax = nn.Softmax()
 
-        self.linear_controller = model_pretrained.linear_controller
+        self.linear_controller = model_controller.linear_controller
 
     def init_memory(self, data_train):
         """
@@ -55,37 +55,35 @@ class model_decoder(nn.Module):
 
         self.memory_past = torch.Tensor().cuda()
         self.memory_fut = torch.Tensor().cuda()
-        #for i in range(self.num_prediction + 1):
-        for i in range(1):
 
-            j = random.randint(0, len(data_train)-1)
-            past = data_train[j][1].unsqueeze(0)
-            future = data_train[j][2].unsqueeze(0)
+        j = random.randint(0, len(data_train)-1)
+        past = data_train[j][1].unsqueeze(0)
+        future = data_train[j][2].unsqueeze(0)
 
-            past = past.cuda()
-            future = future.cuda()
+        past = past.cuda()
+        future = future.cuda()
 
-            # past encoding
-            past = torch.transpose(past, 1, 2)
-            story_embed = self.relu(self.conv_past(past))
-            story_embed = torch.transpose(story_embed, 1, 2)
-            output_past, state_past = self.encoder_past(story_embed)
+        # past encoding
+        past = torch.transpose(past, 1, 2)
+        story_embed = self.relu(self.conv_past(past))
+        story_embed = torch.transpose(story_embed, 1, 2)
+        output_past, state_past = self.encoder_past(story_embed)
 
-            # future encoding
-            future = torch.transpose(future, 1, 2)
-            future_embed = self.relu(self.conv_fut(future))
-            future_embed = torch.transpose(future_embed, 1, 2)
-            output_fut, state_fut = self.encoder_fut(future_embed)
+        # future encoding
+        future = torch.transpose(future, 1, 2)
+        future_embed = self.relu(self.conv_fut(future))
+        future_embed = torch.transpose(future_embed, 1, 2)
+        output_fut, state_fut = self.encoder_fut(future_embed)
 
-            state_past = state_past.squeeze(0)
-            state_fut = state_fut.squeeze(0)
+        state_past = state_past.squeeze(0)
+        state_fut = state_fut.squeeze(0)
 
-            self.memory_past = torch.cat((self.memory_past, state_past), 0)
-            self.memory_fut = torch.cat((self.memory_fut, state_fut), 0)
+        self.memory_past = torch.cat((self.memory_past, state_past), 0)
+        self.memory_fut = torch.cat((self.memory_fut, state_fut), 0)
 
-            #ablation study
-            # future = torch.transpose(future, 1, 2)
-            # self.memory_count = torch.cat((self.memory_count, future), 0)
+        #ablation study
+        # future = torch.transpose(future, 1, 2)
+        # self.memory_count = torch.cat((self.memory_count, future), 0)
 
     def check_memory(self, index):
         """
@@ -147,7 +145,6 @@ class model_decoder(nn.Module):
         # temp = self.memory_count[ind]
         # prediction = temp.view(dim_batch, self.num_prediction, self.future_len, 2)
 
-
         info_future = self.memory_fut[ind]
         info_total = torch.cat((state_past, info_future.unsqueeze(0)), 2)
         input_dec = info_total
@@ -170,6 +167,11 @@ class model_decoder(nn.Module):
         :return: predicted future
         """
 
+        if (len(self.memory_past) < self.num_prediction):
+            num_prediction = len(self.memory_past)
+        else:
+            num_prediction = self.num_prediction
+
         dim_batch = past.size()[0]
         zero_padding = torch.zeros(1, dim_batch, self.dim_embedding_key * 2).cuda()
         prediction = torch.Tensor().cuda()
@@ -186,15 +188,9 @@ class model_decoder(nn.Module):
         # state_normalized = F.normalize(state_past.squeeze(), p=2, dim=1)
         state_normalized = F.normalize(state_past.squeeze(dim=0), p=2, dim=1)
         weight_read = torch.matmul(past_normalized, state_normalized.transpose(0, 1)).transpose(0, 1)
-        index_max = torch.sort(weight_read, descending=True)[1].cpu()
+        index_max = torch.sort(weight_read, descending=True)[1].cpu()[:, :num_prediction]
 
-        if (len(self.memory_past) < self.num_prediction):
-            num = len(self.memory_past)
-        else:
-            num = self.num_prediction
-
-
-        for i_track in range(self.num_prediction):
+        for i_track in range(num_prediction):
             present = present_temp
             prediction_single = torch.Tensor().cuda()
             ind = index_max[:, i_track]
@@ -212,7 +208,7 @@ class model_decoder(nn.Module):
             prediction = torch.cat((prediction, prediction_single.unsqueeze(1)), 1)
 
         #TODO: change tolerance rate
-        future_rep = future.unsqueeze(1).repeat(1, self.num_prediction, 1, 1)
+        future_rep = future.unsqueeze(1).repeat(1, num_prediction, 1, 1)
         distances = torch.norm(prediction - future_rep, dim=3)
         tolerance_1s = torch.sum(distances[:, :, :10] < 0.5, dim=2)
         tolerance_2s = torch.sum(distances[:, :, 10:20] < 1.0, dim=2)

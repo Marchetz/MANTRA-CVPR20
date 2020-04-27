@@ -11,7 +11,7 @@ class model_memory_IRM(nn.Module):
     """
     Memory Network model with Iterative Refinement Module.
     """
-    def __init__(self, settings, model_pretrained):
+    def __init__(self, settings, model_pretrained, model_controller):
         super(model_memory_IRM, self).__init__()
         self.name_model = 'mem_MRI'
 
@@ -46,15 +46,15 @@ class model_memory_IRM(nn.Module):
         self.maxpool2d = torch.nn.MaxPool2d(kernel_size=2, stride=2)
 
         # writing controller
-        self.linear_controller = model_pretrained.linear_controller
+        self.linear_controller = model_controller.linear_controller
 
         # scene: input shape (batch, classes, 360, 360)
-        self.convScene_1 = nn.Sequential(nn.Conv2d(4, 16, kernel_size=5, stride=2, padding=2), nn.ReLU(), nn.BatchNorm2d(16))
+        self.convScene_1 = nn.Sequential(nn.Conv2d(4, 8, kernel_size=5, stride=2, padding=2), nn.ReLU(), nn.BatchNorm2d(8))
         self.convScene_2 = nn.Sequential(
-            nn.Conv2d(16, 32, kernel_size=5, stride=1, padding=2),
-            nn.ReLU(), nn.BatchNorm2d(32))
+            nn.Conv2d(8, 16, kernel_size=5, stride=1, padding=2),
+            nn.ReLU(), nn.BatchNorm2d(16))
 
-        self.RNN_scene = nn.GRU(32, self.dim_embedding_key, 1, batch_first=True)
+        self.RNN_scene = nn.GRU(16, self.dim_embedding_key, 1, batch_first=True)
 
         # refinement fc layer
         self.fc_refine = nn.Linear(self.dim_embedding_key, self.future_len*2)
@@ -88,36 +88,35 @@ class model_memory_IRM(nn.Module):
 
         self.memory_past = torch.Tensor().cuda()
         self.memory_fut = torch.Tensor().cuda()
-        #for i in range(self.num_prediction + 1):
-        for i in range(1):
-            j = random.randint(0, len(data_train))
-            past = data_train[j][1].unsqueeze(0)
-            future = data_train[j][2].unsqueeze(0)
 
-            past = past.cuda()
-            future = future.cuda()
+        j = random.randint(0, len(data_train))
+        past = data_train[j][1].unsqueeze(0)
+        future = data_train[j][2].unsqueeze(0)
 
-            # past encoding
-            past = torch.transpose(past, 1, 2)
-            story_embed = self.relu(self.conv_past(past))
-            story_embed = torch.transpose(story_embed, 1, 2)
-            output_past, state_past = self.encoder_past(story_embed)
+        past = past.cuda()
+        future = future.cuda()
 
-            # future encoding
-            future = torch.transpose(future, 1, 2)
-            future_embed = self.relu(self.conv_fut(future))
-            future_embed = torch.transpose(future_embed, 1, 2)
-            output_fut, state_fut = self.encoder_fut(future_embed)
+        # past encoding
+        past = torch.transpose(past, 1, 2)
+        story_embed = self.relu(self.conv_past(past))
+        story_embed = torch.transpose(story_embed, 1, 2)
+        output_past, state_past = self.encoder_past(story_embed)
 
-            state_past = state_past.squeeze(0)
-            state_fut = state_fut.squeeze(0)
+        # future encoding
+        future = torch.transpose(future, 1, 2)
+        future_embed = self.relu(self.conv_fut(future))
+        future_embed = torch.transpose(future_embed, 1, 2)
+        output_fut, state_fut = self.encoder_fut(future_embed)
 
-            self.memory_past = torch.cat((self.memory_past, state_past), 0)
-            self.memory_fut = torch.cat((self.memory_fut, state_fut), 0)
+        state_past = state_past.squeeze(0)
+        state_fut = state_fut.squeeze(0)
 
-            # #ablation study
-            # future = torch.transpose(future, 1, 2)
-            # self.memory_count = torch.cat((self.memory_count, future), 0)
+        self.memory_past = torch.cat((self.memory_past, state_past), 0)
+        self.memory_fut = torch.cat((self.memory_fut, state_fut), 0)
+
+        # #ablation study
+        # future = torch.transpose(future, 1, 2)
+        # self.memory_count = torch.cat((self.memory_count, future), 0)
 
     def forward(self, past, scene):
         """
@@ -138,7 +137,6 @@ class model_memory_IRM(nn.Module):
         output_past, state_past = self.encoder_past(story_embed)
 
         # scene encoding
-        #pdb.set_trace()
         scene = scene.permute(0, 3, 1, 2)
         scene_1 = self.convScene_1(scene)
         scene_2 = self.convScene_2(scene_1)
@@ -149,8 +147,6 @@ class model_memory_IRM(nn.Module):
         self.weight_read = torch.matmul(past_normalized, state_normalized.transpose(0,1)).transpose(0,1)
 
         self.index_max = torch.sort(self.weight_read, descending=True)[1].cpu()[:, :self.num_prediction]
-
-
         present = present_temp.repeat_interleave(self.num_prediction, dim=0)
         state_past = state_past.repeat_interleave(self.num_prediction, dim=1)
         scene_2 = scene_2.repeat_interleave(self.num_prediction, dim=0)
@@ -173,8 +169,6 @@ class model_memory_IRM(nn.Module):
             present = coords_next
             input_dec = zero_padding
 
-
-        #pdb.set_<trace()
         # Iteratively refine predictions using context
         for i_refine in range(4):
 
@@ -191,10 +185,7 @@ class model_memory_IRM(nn.Module):
             prediction_refine = self.fc_refine(state_rnn).view(-1, 40, 2)
             prediction = prediction + prediction_refine
 
-        #pdb.set_trace()
         prediction = prediction.view(dim_batch, self.num_prediction, 40, 2)
-
-
         return prediction
 
     def write_in_memory(self, past, future):
@@ -206,9 +197,9 @@ class model_memory_IRM(nn.Module):
         """
 
         if (self.memory_past.shape[0] < self.num_prediction):
-            num = self.memory_past.shape[0]
+            num_prediction = self.memory_past.shape[0]
         else:
-            num = self.num_prediction
+            num_prediction = self.num_prediction
 
         dim_batch = past.size()[0]
         zero_padding = torch.zeros(1, dim_batch, self.dim_embedding_key * 2).cuda()
@@ -225,9 +216,9 @@ class model_memory_IRM(nn.Module):
         past_normalized = F.normalize(self.memory_past, p=2, dim=1)
         state_normalized = F.normalize(state_past.squeeze(), p=2, dim=1)
         weight_read = torch.matmul(past_normalized, state_normalized.transpose(0, 1)).transpose(0, 1)
-        index_max = torch.sort(weight_read, descending=True)[1].cpu()[:, :num]
+        index_max = torch.sort(weight_read, descending=True)[1].cpu()[:, :num_prediction]
 
-        for i_track in range(num):
+        for i_track in range(num_prediction):
             present = present_temp
             prediction_single = torch.Tensor().cuda()
             ind = index_max[:, i_track]
@@ -250,7 +241,7 @@ class model_memory_IRM(nn.Module):
         # prediction = self.memory_count[ind]
         # prediction = prediction.view(dim_batch, self.num_prediction, 40, 2)
 
-        future_rep = future.unsqueeze(1).repeat(1, num, 1, 1)
+        future_rep = future.unsqueeze(1).repeat(1, num_prediction, 1, 1)
         distances = torch.norm(prediction - future_rep, dim=3)
         tolerance_1s = torch.sum(distances[:, :, :10] < 0.5, dim=2)
         tolerance_2s = torch.sum(distances[:, :, 10:20] < 1, dim=2)

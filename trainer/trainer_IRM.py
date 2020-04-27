@@ -17,9 +17,10 @@ from models.model_memory_IRM import model_memory_IRM
 import io
 from PIL import Image
 from torchvision.transforms import ToTensor
-from dataset import dataset_invariance
+import dataset_invariance
 import test_index
 import pdb
+import tqdm
 
 
 class Trainer:
@@ -37,7 +38,7 @@ class Trainer:
             os.makedirs(self.folder_test)
         self.folder_test = self.folder_test + '/'
         self.file = open(self.folder_test + "details.txt", "w")
-        tracks = json.load(open("dataset/world_traj_kitti_with_intervals_correct.json"))
+        tracks = json.load(open(config.track_file))
 
         self.dim_clip = 180
         print('creating dataset...')
@@ -66,11 +67,11 @@ class Trainer:
                                       num_workers=1,
                                       shuffle=False
                                       )
-        print('dataset created')
-        if config.visualize_dataset:
-            print('save examples in a folder test')
-            self.data_train.save_dataset(self.folder_test, mode='train')
-            self.data_test.save_dataset(self.folder_test, mode='test')
+        # print('dataset created')
+        # if config.visualize_dataset:
+        #     print('save examples in a folder test')
+        #     self.data_train.save_dataset(self.folder_test, mode='train')
+        #     self.data_test.save_dataset(self.folder_test, mode='test')
 
         self.num_prediction = config.preds
         self.settings = {
@@ -84,16 +85,11 @@ class Trainer:
         self.max_epochs = config.max_epochs
 
         # load pretrained model and create memory_model
-        self.model_pretrained = torch.load(config.model)
-        self.mem_n2n = model_memory_IRM(self.settings, self.model_pretrained)
+        self.model_ae = torch.load(config.model_ae)
+        self.model_controller = torch.load(config.model_controller)
+        self.mem_n2n = model_memory_IRM(self.settings, self.model_ae, self.model_controller)
         self.mem_n2n.past_len = config.past_len
         self.mem_n2n.future_len = config.future_len
-
-        # load model to continue training
-        # self.mem_n2n = torch.load('test/test_IRM/2019-11-19 10:41:43_kernel5,32/model_epoch1492019-11-19 10:41:43')
-        # self.mem_n2n.num_prediction = config.preds
-        # self.mem_n2n.future_len = config.future_len
-        # self.mem_n2n.past_len = config.past_len
 
         self.criterionLoss = nn.MSELoss()
         self.EuclDistance = nn.PairwiseDistance(p=2)
@@ -147,26 +143,24 @@ class Trainer:
         for param in self.mem_n2n.encoder_fut.parameters():
             param.requires_grad = False
         for param in self.mem_n2n.decoder.parameters():
-            param.requires_grad = False
+            param.requires_grad = True
         for param in self.mem_n2n.FC_output.parameters():
-            param.requires_grad = False
+            param.requires_grad = True
 
         # Load memory
         # populate the memory
         start = time.time()
         self._memory_writing(self.config.memory_saved)
+        self.writer.add_text('Training Configuration', 'memory size: ' + str(len(self.mem_n2n.memory_past)), 0)
         end = time.time()
         print('writing time: ' + str(end-start))
 
-        self.mem_n2n.memory_count = np.zeros((len(self.mem_n2n.memory_past), 1))
 
         step_results = [1, 10, 20, 30, 40, 50, 60, 80, 90, 100, 120, 150, 170, 200, 250, 300, 350, 400, 450, 490, 550, 600]
-
 
         # Main training loop
         for epoch in range(self.start_epoch, config.max_epochs):
             self.mem_n2n.train()
-            # self._memory_writing()
 
             print('epoch: ' + str(epoch))
             start = time.time()
@@ -179,38 +173,27 @@ class Trainer:
                 print('start test')
                 start_test = time.time()
                 dict_metrics_test = self.evaluate(self.test_loader, epoch + 1)
-                dict_metrics_train = self.evaluate(self.train_loader, epoch + 1)
                 end_test = time.time()
                 print('Test took: {}'.format(end_test - start_test))
 
                 # Tensorboard summary: test
                 self.writer.add_scalar('accuracy_test/euclMean', dict_metrics_test['euclMean'], epoch)
-                self.writer.add_scalar('accuracy_test/Horizon01s', dict_metrics_test['horizon01s'], epoch)
                 self.writer.add_scalar('accuracy_test/Horizon10s', dict_metrics_test['horizon10s'], epoch)
                 self.writer.add_scalar('accuracy_test/Horizon20s', dict_metrics_test['horizon20s'], epoch)
                 self.writer.add_scalar('accuracy_test/Horizon30s', dict_metrics_test['horizon30s'], epoch)
                 self.writer.add_scalar('accuracy_test/Horizon40s', dict_metrics_test['horizon40s'], epoch)
                 self.writer.add_scalar('dimension_memory/memory', len(self.mem_n2n.memory_past), epoch)
 
-                # Tensorboard summary: train
-                self.writer.add_scalar('accuracy_train/euclMean', dict_metrics_train['euclMean'], epoch)
-                self.writer.add_scalar('accuracy_train/Horizon01s', dict_metrics_train['horizon01s'], epoch)
-                self.writer.add_scalar('accuracy_train/Horizon10s', dict_metrics_train['horizon10s'], epoch)
-                self.writer.add_scalar('accuracy_train/Horizon20s', dict_metrics_train['horizon20s'], epoch)
-                self.writer.add_scalar('accuracy_train/Horizon30s', dict_metrics_train['horizon30s'], epoch)
-                self.writer.add_scalar('accuracy_train/Horizon40s', dict_metrics_train['horizon40s'], epoch)
-
                 # Save model checkpoint
-                # torch.save(self.mem_n2n, self.folder_test + 'model' + self.name_test)
-                torch.save(self.mem_n2n, self.folder_test + 'model_' + str(dict_metrics_test['horizon40s'].detach().cpu().numpy()) + '_epoch_' + str(epoch) + '_' + self.name_test)
-
+                torch.save(self.mem_n2n, self.folder_test + 'model_IRM_epoch_' + str(epoch) + '_' + self.name_test)
+                #torch.save(self.mem_n2n, self.folder_test + 'model_' + str(dict_metrics_test['horizon40s'].detach().cpu().numpy()) + '_epoch_' + str(epoch) + '_' + self.name_test)
 
                 self.save_results(dict_metrics_test, epoch=epoch + 1)
 
             for name, param in self.mem_n2n.named_parameters():
                 self.writer.add_histogram(name, param.data, epoch)
 
-    def save_results(self, dict_metrics_test, dict_metrics_train=None, epoch=0):
+    def save_results(self, dict_metrics_test, epoch=0):
         """
         Serialize results
         :param dict_metrics_test: dictionary with test metrics
@@ -234,20 +217,10 @@ class Trainer:
         self.file.write("ADE 3s: " + str(dict_metrics_test['ADE_3s'].item()) + '\n')
         self.file.write("ADE 4s: " + str(dict_metrics_test['euclMean'].item()) + '\n')
 
-        if dict_metrics_train is not None:
-            self.file.write("TRAIN:" + '\n')
-            self.file.write("error 1s: " + str(dict_metrics_train['horizon10s'].item()) + '\n')
-            self.file.write("error 2s: " + str(dict_metrics_train['horizon20s'].item()) + '\n')
-            self.file.write("error 3s: " + str(dict_metrics_train['horizon30s'].item()) + '\n')
-            self.file.write("error 4s: " + str(dict_metrics_train['horizon40s'].item()) + '\n')
-            self.file.write("ADE 1s: " + str(dict_metrics_train['ADE_1s'].item()) + '\n')
-            self.file.write("ADE 2s: " + str(dict_metrics_train['ADE_2s'].item()) + '\n')
-            self.file.write("ADE 3s: " + str(dict_metrics_train['ADE_3s'].item()) + '\n')
-            self.file.write("ADE 4s: " + str(dict_metrics_train['euclMean'].item()) + '\n')
         self.file.close()
 
     def draw_track(self, past, future, scene_track, pred=None, angle=0, video_id='', vec_id='', index_tracklet=0,
-                   num_epoch=0, save_fig=False, path='', horizon_dist=None):
+                   num_epoch=0, horizon_dist=None):
 
         colors = [(0, 0, 0), (0.87, 0.87, 0.87), (0.54, 0.54, 0.54), (0.49, 0.33, 0.16), (0.29, 0.57, 0.25)]
         cmap_name = 'scene_cmap'
@@ -273,16 +246,14 @@ class Trainer:
             plt.title('HE 1s: ' + str(horizon_dist[0]) + ' HE 2s: ' + str(horizon_dist[2]) + ' HE 3s: ' + str(
                 horizon_dist[2]) + ' HE 4s: ' + str(horizon_dist[3]))
 
-        if save_fig:
-            # plt.savefig(path + video_id + '_' + vec_id + '_' + str(index_tracklet).zfill(3) + remove_pred + '.png')
-            # Save figure in Tensorboard
-            buf = io.BytesIO()
-            plt.savefig(buf, format='jpeg')
-            buf.seek(0)
-            image = Image.open(buf)
-            image = ToTensor()(image).unsqueeze(0)
-            self.writer.add_image('Image_test/track_' + video_id + '_' + vec_id + '_' + str(index_tracklet).zfill(3),
-                                  image.squeeze(0), num_epoch)
+        # Save figure in Tensorboard
+        buf = io.BytesIO()
+        plt.savefig(buf, format='jpeg')
+        buf.seek(0)
+        image = Image.open(buf)
+        image = ToTensor()(image).unsqueeze(0)
+        self.writer.add_image('Image_test/track_' + video_id + '_' + vec_id + '_' + str(index_tracklet).zfill(3),
+                              image.squeeze(0), num_epoch)
         plt.close(fig)
 
     def evaluate(self, loader, epoch=0):
@@ -294,9 +265,7 @@ class Trainer:
         """
 
         self.mem_n2n.eval()
-
         videos_json = {}
-
         test_ids = self.data_test.ids_split_test
 
         for ids in test_ids:
@@ -306,10 +275,10 @@ class Trainer:
         self.mem_n2n.eval()
         with torch.no_grad():
             dict_metrics = {}
-            eucl_mean = ADE_1s = ADE_2s = ADE_3s = horizon01s = horizon10s = horizon20s = horizon30s = horizon40s = 0
+            eucl_mean = ADE_1s = ADE_2s = ADE_3s =  horizon10s = horizon20s = horizon30s = horizon40s = 0
 
             for step, (index, past, future, presents, angle_presents, videos, vehicles, number_vec, scene,
-                       scene_one_hot) in enumerate(loader):
+                       scene_one_hot) in enumerate(tqdm.tqdm(loader)):
                 past = Variable(past)
                 future = Variable(future)
                 scene_one_hot = Variable(scene_one_hot)
@@ -324,15 +293,14 @@ class Trainer:
                 distances_mean = torch.mean(distances, dim=2)
                 index_min = torch.argmin(distances_mean, dim=1)
                 distance_pred = distances[torch.arange(past.shape[0]), index_min[:]]
-                horizon01s += sum(distance_pred[:,0])
-                horizon10s += sum(distance_pred[:,9])
-                horizon20s += sum(distance_pred[:,19])
-                horizon30s += sum(distance_pred[:,29])
-                horizon40s += sum(distance_pred[:,39])
-                ADE_1s += sum(torch.mean(distance_pred[:,:10], dim=1))
-                ADE_2s += sum(torch.mean(distance_pred[:,:20], dim=1))
-                ADE_3s += sum(torch.mean(distance_pred[:,:30], dim=1))
-                eucl_mean += sum(torch.mean(distance_pred[:,:40], dim=1))
+                horizon10s += sum(distance_pred[:, 9])
+                horizon20s += sum(distance_pred[:, 19])
+                horizon30s += sum(distance_pred[:, 29])
+                horizon40s += sum(distance_pred[:, 39])
+                ADE_1s += sum(torch.mean(distance_pred[:, :10], dim=1))
+                ADE_2s += sum(torch.mean(distance_pred[:, :20], dim=1))
+                ADE_3s += sum(torch.mean(distance_pred[:, :30], dim=1))
+                eucl_mean += sum(torch.mean(distance_pred[:, :40], dim=1))
 
                 for i in range(len(past)):
                     vid = videos[i]
@@ -342,18 +310,13 @@ class Trainer:
                     angle = angle_presents[i].cpu()
                     if loader == self.test_loader and self.config.saveImages:
                         if index_track.item() in self.test_index[vid][vec + num_vec]:
-                            # Save interesting results
-                            # if not os.path.exists(self.folder_test + 'highlights'):
-                            #     os.makedirs(self.folder_test + 'highlights')
-                            # highlights_path = self.folder_test + 'highlights' + '/'
                             self.draw_track(past[i], future[i], scene[i], pred[i], angle, vid, vec + num_vec,
-                                            index_tracklet=index_track, num_epoch=epoch, save_fig=True)
+                                            index_tracklet=index_track, num_epoch=epoch)
 
             dict_metrics['euclMean'] = eucl_mean / len(loader.dataset)
             dict_metrics['ADE_1s'] = ADE_1s / len(loader.dataset)
             dict_metrics['ADE_2s'] = ADE_2s / len(loader.dataset)
             dict_metrics['ADE_3s'] = ADE_3s / len(loader.dataset)
-            dict_metrics['horizon01s'] = horizon01s / len(loader.dataset)
             dict_metrics['horizon10s'] = horizon10s / len(loader.dataset)
             dict_metrics['horizon20s'] = horizon20s / len(loader.dataset)
             dict_metrics['horizon30s'] = horizon30s / len(loader.dataset)
@@ -368,7 +331,7 @@ class Trainer:
         """
         config = self.config
         self.mem_n2n.train()
-        for step, (index, past, future, _, _, _, _, _, scene, scene_one_hot) in enumerate(self.train_loader):
+        for step, (index, past, future, _, _, _, _, _, _, scene_one_hot) in enumerate(tqdm.tqdm(self.train_loader)):
             self.iterations += 1
             past = Variable(past)
             future = Variable(future)
@@ -380,7 +343,6 @@ class Trainer:
             self.opt.zero_grad()
             output = self.mem_n2n(past, scene_one_hot)
 
-            #pdb.set_trace()
             future_repeat = future.unsqueeze(1).repeat(1, self.num_prediction, 1, 1)
             distances = torch.norm(output - future_repeat, dim=3)
             distances_mean = torch.mean(distances, dim=2)
@@ -409,7 +371,6 @@ class Trainer:
             #future_repeat = future.unsqueeze(1).repeat(1,self.num_prediction,1,1)
             #loss = self.criterionLoss(output,future_repeat)
 
-
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.mem_n2n.parameters(), 1.0, norm_type=2)
             self.opt.step()
@@ -423,7 +384,6 @@ class Trainer:
         :return: loss
         """
 
-        self.mem_n2n.memory_count = torch.Tensor().cuda()
         if memory_saved:
             self.mem_n2n.memory_past = torch.load('pretrained_models/memory_saved/memory_past.pt')
             self.mem_n2n.memory_fut = torch.load('pretrained_models/memory_saved/memory_fut.pt')

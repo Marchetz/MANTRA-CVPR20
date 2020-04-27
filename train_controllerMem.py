@@ -13,7 +13,8 @@ def parse_config():
     parser.add_argument("--preds", type=int, default=5)
     parser.add_argument("--dim_embedding_key", type=int, default=48)
 
-    parser.add_argument("--model_ae", default='pretrained_models/model_AE/model_ae2019-10-11 13:15:33')
+    #parser.add_argument("--model_ae", default='pretrained_models/model_AE/model_ae_2019-09-17_17_31')
+    parser.add_argument("--model_ae", default='pretrained_models/model_AE/model_ae_NEW')
     parser.add_argument("--track_file", default="kitti_dataset.json", help="dataset file")
     parser.add_argument("--info", type=str, default='', help='Name of training. '
                                                              'It will use in tensorboard log and test folder')

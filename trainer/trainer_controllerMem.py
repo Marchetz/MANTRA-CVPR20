@@ -4,6 +4,7 @@ from matplotlib.colors import LinearSegmentedColormap
 import matplotlib.pyplot as plt
 import datetime
 import numpy as np
+import cv2
 import json
 import torch
 import torch.nn as nn
@@ -16,6 +17,7 @@ import io
 from PIL import Image
 from torchvision.transforms import ToTensor
 import time
+import tqdm
 
 class Trainer():
     def __init__(self, config):
@@ -72,6 +74,9 @@ class Trainer():
         # load pretrained model and create memory model
         self.model_pretrained = torch.load(config.model_ae)
         self.mem_n2n = model_controllerMem(self.settings, self.model_pretrained)
+        self.mem_n2n.future_len = config.future_len
+        self.mem_n2n.past_len = config.past_len
+        
         self.EuclDistance = nn.PairwiseDistance(p=2)
         self.criterionLoss = nn.MSELoss()
         self.opt = torch.optim.Adam(self.mem_n2n.parameters(), lr=config.learning_rate)
@@ -208,6 +213,8 @@ class Trainer():
         self.file.write("split test: " + str(self.data_test.ids_split_test) + '\n')
         self.file.write("num_predictions:" + str(self.config.preds) + '\n')
         self.file.write("epoch: " + str(epoch) + '\n')
+        self.file.write("TRAIN size: " + str(len(self.data_train)) + '\n')
+        self.file.write("TEST size: " + str(len(self.data_test)) + '\n')
         self.file.write("memory size: " + str(len(self.mem_n2n.memory_past)) + '\n')
 
         self.file.write("error 1s: " + str(dict_metrics_test['horizon10s'].item()) + '\n')
@@ -221,7 +228,7 @@ class Trainer():
 
         self.file.close()
 
-    def draw_track(self, past, future, scene_track, pred=None, video_id='', vec_id='', index_tracklet=0, num_epoch=0):
+    def draw_track(self, past, future, scene_track, pred=None, angle=0, video_id='', vec_id='', index_tracklet=0, num_epoch=0):
 
         colors = [(0, 0, 0), (0.87, 0.87, 0.87), (0.54, 0.54, 0.54), (0.49, 0.33, 0.16), (0.29, 0.57, 0.25)]
         cmap_name = 'scene_cmap'
@@ -230,18 +237,19 @@ class Trainer():
         fig = plt.figure()
         plt.imshow(scene_track, cmap=cm)
         colors = pl.cm.Reds(np.linspace(1, 0.3, pred.shape[0]))
-        past = past.cpu().numpy()
-        future = future.cpu().numpy()
-        story_scene = past * 2 + self.dim_clip
+
+        matRot_track = cv2.getRotationMatrix2D((0, 0), -angle, 1)
+        past = cv2.transform(past.cpu().numpy().reshape(-1, 1, 2), matRot_track).squeeze()
+        future = cv2.transform(future.cpu().numpy().reshape(-1, 1, 2), matRot_track).squeeze()
+        past_scene = past * 2 + self.dim_clip
         future_scene = future * 2 + self.dim_clip
-        plt.plot(story_scene[:, 0], story_scene[:, 1], c='blue', linewidth=1, marker='o', markersize=1)
+        plt.plot(past_scene[:, 0], past_scene[:, 1], c='blue', linewidth=1, marker='o', markersize=1)
         if pred is not None:
             for i_p in reversed(range(pred.shape[0])):
-                pred_i = pred[i_p].cpu().numpy()
+                pred_i = cv2.transform(pred[i_p].cpu().numpy().reshape(-1, 1, 2), matRot_track).squeeze()
                 pred_scene = pred_i * 2 + self.dim_clip
                 plt.plot(pred_scene[:, 0], pred_scene[:, 1], color=colors[i_p], linewidth=0.5, marker='o',
                          markersize=0.5)
-
         plt.plot(future_scene[:, 0], future_scene[:, 1], c='green', linewidth=1, marker='o', markersize=1)
         plt.title('video: ' + video_id + ', vehicle: ' + vec_id + ',index: ' + str(index_tracklet))
         plt.axis('equal')
@@ -294,19 +302,14 @@ class Trainer():
                 horizon30s += torch.sum(min_distances[:, 29])
                 horizon40s += torch.sum(min_distances[:, 39])
 
-                for i in range(len(past)):
-                    vid = videos[i]
-                    vec = vehicles[i]
-                    num_vec = number_vec[i]
-                    index_track = index[i].numpy()
-                    if loader == self.test_loader and self.config.saveImages:
-                        if index_track.item() in self.test_index[vid][vec + num_vec]:
-                            # Save interesting results
-                            # if not os.path.exists(self.folder_test + 'highlights'):
-                            #     os.makedirs(self.folder_test + 'highlights')
-                            # highlights_path = self.folder_test + 'highlights' + '/'
-                            self.draw_track(past[i], future[i], scene[i], pred[i], vid, vec + num_vec,
-                                            index_tracklet=index_track, num_epoch=epoch)
+                # save in tensorboard: one for each batch
+                vid = videos[0]
+                vec = vehicles[0]
+                num_vec = number_vec[0]
+                index_track = index[0].numpy()
+                if loader == self.test_loader:
+                    self.draw_track(past[0], future[0], scene[0], pred[0], vid, vec + num_vec,
+                                    index_tracklet=index_track, num_epoch=epoch)
 
             dict_metrics['eucl_mean'] = eucl_mean / len(loader.dataset)
             dict_metrics['ADE_1s'] = ADE_1s / len(loader.dataset)
@@ -326,7 +329,7 @@ class Trainer():
         :return: loss
         """
         config = self.config
-        for step, (index, past, future, _, _, _, _, _, _, _) in enumerate(self.train_loader):
+        for step, (index, past, future, _, _, _, _, _, _, _) in enumerate(tqdm.tqdm(self.train_loader)):
             self.iterations += 1
             past = Variable(past)
             future = Variable(future)
@@ -355,7 +358,7 @@ class Trainer():
         self.mem_n2n.init_memory(self.data_train)
         config = self.config
         with torch.no_grad():
-            for step, (index, past, future, _, _, _, _, _, _, _) in enumerate(self.train_loader):
+            for step, (index, past, future, _, _, _, _, _, _, _) in enumerate(tqdm.tqdm(self.train_loader)):
                 self.iterations += 1
                 past = Variable(past)
                 future = Variable(future)

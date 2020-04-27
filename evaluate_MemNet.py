@@ -32,7 +32,6 @@ class Validator():
         if not os.path.exists(self.folder_test):
             os.makedirs(self.folder_test)
         self.folder_test = self.folder_test + '/'
-
         tracks = json.load(open(config.track_file))
 
         self.dim_clip = 180
@@ -218,6 +217,13 @@ class Validator():
                 else:
                     pred = self.mem_n2n(past)
 
+                pdb.set_trace()
+                future_rep = future.unsqueeze(1).repeat(1, self.config.preds, 1, 1)
+                distances = torch.norm(pred - future_rep, dim=3)
+                mean_distances = torch.mean(distances, dim=2)
+                index_min = torch.argmin(mean_distances, dim=1)
+                min_distances = distances[torch.arange(0, len(index_min)), index_min]
+
                 for i in range(len(past)):
                     list_error_single_pred_mean = []
                     list_error_single_pred_1s = []
@@ -321,9 +327,7 @@ class Validator():
             dict_metrics['horizon20s'] = horizon20s / len(loader.dataset)
             dict_metrics['horizon30s'] = horizon30s / len(loader.dataset)
             dict_metrics['horizon40s'] = horizon40s / len(loader.dataset)
-            ind_better_rate = np.array(ind_better) / len(loader.dataset) * 100
-            print('probability: better prediction from memory ')
-            print(ind_better_rate)
+
 
         return dict_metrics
 
@@ -351,7 +355,6 @@ class Validator():
             list_err2 = []
             list_err3 = []
             list_err4 = []
-            ind_better = [0] * self.config.preds
 
             for step, (index, past, future, presents, angle_presents, videos, vehicles, number_vec, scene, scene_one_hot) in enumerate(loader):
                 past = Variable(past)
@@ -382,7 +385,7 @@ class Validator():
                         list_error_single_pred_4s.append(round(dist[39].item(), 3))
                     # i_min = np.argmin(list_error_single_pred_mean)
                     i_min = np.argmin(list_error_single_pred_4s)
-                    ind_better[i_min] += 1
+
 
                     dist = self.EuclDistance(pred[i][i_min], future[i, :])
                     he_1s = round(dist[9].item(), 3)

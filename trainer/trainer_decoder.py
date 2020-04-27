@@ -19,6 +19,7 @@ import io
 from PIL import Image
 import dataset_invariance
 import test_index
+import tqdm
 
 class Trainer:
     def __init__(self, config):
@@ -28,7 +29,7 @@ class Trainer:
         """
 
         self.config = config
-        self.iterations = 0
+
         self.test_index = test_index.dict_test
         self.name_run = 'runs-ft-decoder/'
         self.name_test = str(datetime.datetime.now())[:19]
@@ -90,14 +91,17 @@ class Trainer:
         # self.model_pretrained_controller = torch.load(config.model_controller)
         # self.mem_n2n = model_Memnet_controller(self.settings, self.model_pretrained_ae, self.model_pretrained_controller)
 
-        self.model_pretrained = torch.load(config.model)
-        self.mem_n2n = model_decoder(self.settings, self.model_pretrained)
+        # load pretrained model and create memory_model
+        self.model_ae = torch.load(config.model_ae)
+        self.model_controller = torch.load(config.model_controller)
+        self.mem_n2n = model_decoder(self.settings, self.model_ae, self.model_controller)
         self.mem_n2n.past_len = config.past_len
         self.mem_n2n.future_len = config.future_len
 
         self.criterionLoss = nn.MSELoss()
         self.EuclDistance = nn.PairwiseDistance(p=2)
         self.opt = torch.optim.Adam(self.mem_n2n.parameters(), lr=config.learning_rate)
+        self.iterations = 0
         self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.opt, 0.5)
 
         if config.cuda:
@@ -155,12 +159,13 @@ class Trainer:
         for param in self.mem_n2n.FC_output.parameters():
             param.requires_grad = True
 
-        # Load memory
-        print('loading memory')
-        self._memory_writing()
-        print('memory updated')
+        # populate the memory
+        start = time.time()
+        self._memory_writing(self.config.memory_saved)
+        self.writer.add_text('Training Configuration', 'memory size: ' + str(len(self.mem_n2n.memory_past)), 0)
+        end = time.time()
+        print('writing time: ' + str(end-start))
 
-        self.mem_n2n.memory_count = np.zeros((len(self.mem_n2n.memory_past), 1))
         step_results = [1, 10, 20, 40, 50, 60, 80, 100, 150, 200, 250, 300, 350, 400, 450, 490, 550, 600]
 
         # Main training loop
@@ -181,7 +186,7 @@ class Trainer:
                 print('Test took: {}'.format(end_test - start_test))
 
                 # Tensorboard summary: test
-                self.writer.add_scalar('accuracy_test/euclMean', dict_metrics_test['euclMean'], epoch)
+                self.writer.add_scalar('accuracy_test/eucl_mean', dict_metrics_test['eucl_mean'], epoch)
                 self.writer.add_scalar('accuracy_test/Horizon10s', dict_metrics_test['horizon10s'], epoch)
                 self.writer.add_scalar('accuracy_test/Horizon20s', dict_metrics_test['horizon20s'], epoch)
                 self.writer.add_scalar('accuracy_test/Horizon30s', dict_metrics_test['horizon30s'], epoch)
@@ -189,7 +194,7 @@ class Trainer:
                 self.writer.add_scalar('dimension_memory/memory', len(self.mem_n2n.memory_past), epoch)
 
                 # Save model checkpoint
-                torch.save(self.mem_n2n, self.folder_test + 'model' + self.name_test)
+                torch.save(self.mem_n2n, self.folder_test + 'model_FTdecoder_epoch_' + str(epoch) + '_' + self.name_test)
 
                 self.save_results(dict_metrics_test, epoch=epoch + 1)
 
@@ -218,44 +223,37 @@ class Trainer:
         self.file.write("ADE 1s: " + str(dict_metrics_test['ADE_1s'].item()) + '\n')
         self.file.write("ADE 2s: " + str(dict_metrics_test['ADE_2s'].item()) + '\n')
         self.file.write("ADE 3s: " + str(dict_metrics_test['ADE_3s'].item()) + '\n')
-        self.file.write("ADE 4s: " + str(dict_metrics_test['euclMean'].item()) + '\n')
+        self.file.write("ADE 4s: " + str(dict_metrics_test['eucl_mean'].item()) + '\n')
 
-        if dict_metrics_train is not None:
-            self.file.write("TRAIN:" + '\n')
-            self.file.write("error 1s: " + str(dict_metrics_train['horizon10s'].item()) + '\n')
-            self.file.write("error 2s: " + str(dict_metrics_train['horizon20s'].item()) + '\n')
-            self.file.write("error 3s: " + str(dict_metrics_train['horizon30s'].item()) + '\n')
-            self.file.write("error 4s: " + str(dict_metrics_train['horizon40s'].item()) + '\n')
-            self.file.write("ADE 1s: " + str(dict_metrics_train['ADE_1s'].item()) + '\n')
-            self.file.write("ADE 2s: " + str(dict_metrics_train['ADE_2s'].item()) + '\n')
-            self.file.write("ADE 3s: " + str(dict_metrics_train['ADE_3s'].item()) + '\n')
-            self.file.write("ADE 4s: " + str(dict_metrics_train['euclMean'].item()) + '\n')
         self.file.close()
 
-    def draw_track(self, past, future, scene_track, pred=None, video_id='', vec_id='', index_tracklet=0,
-                   num_epoch=0):
+    def draw_track(self, past, future, scene_track, pred=None, angle=0, video_id='', vec_id='', index_tracklet=0,
+                   num_epoch=0, horizon_dist=None):
 
         colors = [(0, 0, 0), (0.87, 0.87, 0.87), (0.54, 0.54, 0.54), (0.49, 0.33, 0.16), (0.29, 0.57, 0.25)]
         cmap_name = 'scene_cmap'
         cm = LinearSegmentedColormap.from_list(cmap_name, colors, N=5)
         fig = plt.figure()
-
         plt.imshow(scene_track, cmap=cm)
         colors = pl.cm.Reds(np.linspace(1, 0.3, pred.shape[0]))
-        past = past.cpu().numpy()
-        future = future.cpu().numpy()
+        matRot_track = cv2.getRotationMatrix2D((0, 0), -angle, 1)
+        past = cv2.transform(past.cpu().numpy().reshape(-1, 1, 2), matRot_track).squeeze()
+        future = cv2.transform(future.cpu().numpy().reshape(-1, 1, 2), matRot_track).squeeze()
         story_scene = past * 2 + self.dim_clip
         future_scene = future * 2 + self.dim_clip
         plt.plot(story_scene[:, 0], story_scene[:, 1], c='blue', linewidth=1, marker='o', markersize=1)
         if pred is not None:
             for i_p in reversed(range(pred.shape[0])):
-                pred_i = pred[i_p].cpu().numpy()
+                pred_i = cv2.transform(pred[i_p].cpu().numpy().reshape(-1, 1, 2), matRot_track).squeeze()
                 pred_scene = pred_i * 2 + self.dim_clip
-                plt.plot(pred_scene[:, 0], pred_scene[:, 1], color=colors[i_p], linewidth=0.5, marker='o', markersize=0.5)
-
+                plt.plot(pred_scene[:, 0], pred_scene[:, 1], color=colors[i_p], linewidth=0.5, marker='o',
+                         markersize=0.5)
         plt.plot(future_scene[:, 0], future_scene[:, 1], c='green', linewidth=1, marker='o', markersize=1)
-        plt.title('video: ' + video_id + ', vehicle: ' + vec_id + ',index: ' + str(index_tracklet))
         plt.axis('equal')
+        if horizon_dist is not None:
+            plt.title('HE 1s: ' + str(horizon_dist[0]) + ' HE 2s: ' + str(horizon_dist[2]) + ' HE 3s: ' + str(
+                horizon_dist[2]) + ' HE 4s: ' + str(horizon_dist[3]))
+
         # Save figure in Tensorboard
         buf = io.BytesIO()
         plt.savefig(buf, format='jpeg')
@@ -283,7 +281,8 @@ class Trainer:
             list_err3 = []
             list_err4 = []
 
-            for step, (index, past, future, presents, angle_presents, videos, vehicles, number_vec, scene, scene_one_hot) in enumerate(loader):
+            for step, (index, past, future, presents, angle_presents, videos, vehicles, number_vec, scene, scene_one_hot) \
+                    in enumerate(tqdm.tqdm(loader)):
                 past = Variable(past)
                 future = Variable(future)
                 if self.config.cuda:
@@ -291,59 +290,32 @@ class Trainer:
                     future = future.cuda()
                 pred = self.mem_n2n(past)
 
+                future_rep = future.unsqueeze(1).repeat(1, self.num_prediction, 1, 1)
+                distances = torch.norm(pred - future_rep, dim=3)
+                distances_mean = torch.mean(distances, dim=2)
+                index_min = torch.argmin(distances_mean, dim=1)
+                distance_pred = distances[torch.arange(past.shape[0]), index_min[:]]
+                horizon10s += sum(distance_pred[:, 9])
+                horizon20s += sum(distance_pred[:, 19])
+                horizon30s += sum(distance_pred[:, 29])
+                horizon40s += sum(distance_pred[:, 39])
+                ADE_1s += sum(torch.mean(distance_pred[:, :10], dim=1))
+                ADE_2s += sum(torch.mean(distance_pred[:, :20], dim=1))
+                ADE_3s += sum(torch.mean(distance_pred[:, :30], dim=1))
+                eucl_mean += sum(torch.mean(distance_pred[:, :40], dim=1))
+
                 for i in range(len(past)):
-                    list_error = []
-                    for i_multiple in range(len(pred[i])):
-                        pred_one = pred[i][i_multiple]
-                        dist = self.EuclDistance(pred_one, future[i, :])
-                        list_error.append(torch.mean(dist))
-
-                    i_min = np.argmin(list_error)
-                    dist = self.EuclDistance(pred[i][i_min], future[i, :])
-
-                    eucl_mean += torch.mean(dist)
-                    ADE_1s += torch.mean(dist[:10])
-                    ADE_2s += torch.mean(dist[:20])
-                    ADE_3s += torch.mean(dist[:30])
-                    list_err1.append(dist[9].cpu())
-                    list_err2.append(dist[19].cpu())
-                    list_err3.append(dist[29].cpu())
-                    list_err4.append(dist[39].cpu())
-                    horizon10s += dist[9]
-                    horizon20s += dist[19]
-                    horizon30s += dist[29]
-                    horizon40s += dist[39]
-
                     vid = videos[i]
                     vec = vehicles[i]
                     num_vec = number_vec[i]
                     index_track = index[i].numpy()
-                    present = presents[i].cpu()
-
+                    angle = angle_presents[i].cpu()
                     if loader == self.test_loader and self.config.saveImages:
+                        if index_track.item() in self.test_index[vid][vec + num_vec]:
+                            self.draw_track(past[i], future[i], scene[i], pred[i], angle, vid, vec + num_vec,
+                                            index_tracklet=index_track, num_epoch=epoch)
 
-                        if self.config.saveImages_All:
-                            if not os.path.exists(self.folder_test + vid):
-                                os.makedirs(self.folder_test + vid)
-                            video_path = self.folder_test + vid + '/'
-                            if not os.path.exists(video_path + vec + num_vec):
-                                os.makedirs(video_path + vec + num_vec)
-                            vehicle_path = video_path + vec + num_vec + '/'
-                            self.draw_track(past[i], future[i], scene[i], pred[i], vid, vec + num_vec,
-                                            index_tracklet=index_track, save_fig=True,
-                                            path=vehicle_path)
-                        else:
-                            if index_track.item() in self.test_index[vid][vec + num_vec]:
-                                # Save interesting results
-                                if not os.path.exists(self.folder_test + 'highlights'):
-                                    os.makedirs(self.folder_test + 'highlights')
-                                highlights_path = self.folder_test + 'highlights' + '/'
-                                # before removing bad predictions
-                                self.draw_track(past[i], future[i], scene[i], pred[i], vid, vec + num_vec,
-                                                index_tracklet=index_track, save_fig=True,
-                                                path=highlights_path)
-
-            dict_metrics['euclMean'] = eucl_mean / len(loader.dataset)
+            dict_metrics['eucl_mean'] = eucl_mean / len(loader.dataset)
             dict_metrics['ADE_1s'] = ADE_1s / len(loader.dataset)
             dict_metrics['ADE_2s'] = ADE_2s / len(loader.dataset)
             dict_metrics['ADE_3s'] = ADE_3s / len(loader.dataset)
@@ -360,7 +332,7 @@ class Trainer:
         :return: loss
         """
         config = self.config
-        for step, (index, past, future, _, _, _, _, _, scene, scene_one_hot) in enumerate(self.train_loader):
+        for step, (index, past, future, _, _, _, _, _, scene, scene_one_hot) in enumerate(tqdm.tqdm(self.train_loader)):
             self.iterations += 1
             past = Variable(past)
             future = Variable(future)
@@ -389,23 +361,27 @@ class Trainer:
         return loss.item()
 
 
-    def _memory_writing(self):
+    def _memory_writing(self, memory_saved):
         """
         writing in the memory with controller (loop over all train dataset)
         :return: loss
         """
-        self.mem_n2n.init_memory(self.data_train)
-        config = self.config
-        #for i in range(writing_iteration):
-        with torch.no_grad():
-            for step, (index, past, future, _, _, _, _, _, _, _) in enumerate(self.train_loader):
-                self.iterations += 1
-                past = Variable(past)
-                future = Variable(future)
-                if config.cuda:
-                    past = past.cuda()
-                    future = future.cuda()
-                self.mem_n2n.write_in_memory(past, future)
+        if memory_saved:
+            self.mem_n2n.memory_past = torch.load('pretrained_models/memory_saved_argo/memory_past.pt')
+            self.mem_n2n.memory_fut = torch.load('pretrained_models/memory_saved_argo/memory_fut.pt')
+        else:
+            self.mem_n2n.init_memory(self.data_train)
+            config = self.config
+            #for i in range(writing_iteration):
+            with torch.no_grad():
+                for step, (index, past, future, _, _, _, _, _, _, _) in enumerate(self.train_loader):
+                    self.iterations += 1
+                    past = Variable(past)
+                    future = Variable(future)
+                    if config.cuda:
+                        past = past.cuda()
+                        future = future.cuda()
+                    self.mem_n2n.write_in_memory(past, future)
 
     def save_dataset(self):
         self.data_test.save_dataset(self.folder_test)
