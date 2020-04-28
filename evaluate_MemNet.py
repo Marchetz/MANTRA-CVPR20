@@ -14,7 +14,7 @@ import index_qualitative
 from torch.autograd import Variable
 import csv
 import time
-import pdb
+import tqdm
 
 
 class Validator():
@@ -30,7 +30,6 @@ class Validator():
             os.makedirs(self.folder_test)
         self.folder_test = self.folder_test + '/'
         tracks = json.load(open(config.track_file))
-
 
         self.dim_clip = 180
         print('creating dataset...')
@@ -57,9 +56,9 @@ class Validator():
                                       shuffle=False)
         print('dataset created')
         if config.visualize_dataset:
-            print('save examples in a folder test')
-            self.data_train.save_dataset(self.folder_test, mode='train')
-            self.data_test.save_dataset(self.folder_test, mode='test')
+            print('save examples in folder test')
+            self.data_train.save_dataset(self.folder_test + 'dataset_train/')
+            self.data_test.save_dataset(self.folder_test + 'dataset_test/')
 
         self.settings = {
             "batch_size": config.batch_size,
@@ -94,7 +93,7 @@ class Validator():
         print('writing time: ' + str(end-start))
 
         # run test!
-        dict_metrics_test = self.evaluate(self.test_loader, 1)
+        dict_metrics_test = self.evaluate(self.test_loader)
         self.save_results(dict_metrics_test)
 
     def save_results(self, dict_metrics_test):
@@ -127,7 +126,7 @@ class Validator():
         self.file.close()
 
     def draw_track(self, past, future, scene_track, pred=None, angle=0, video_id='', vec_id='', index_tracklet=0,
-                   save_fig=False, path='', horizon_dist=None, probs=None):
+                   save_fig=False, path='', horizon_dist=None):
 
         colors = [(0, 0, 0), (0.87, 0.87, 0.87), (0.54, 0.54, 0.54), (0.49, 0.33, 0.16), (0.29, 0.57, 0.25)]
         cmap_name = 'scene_cmap'
@@ -148,39 +147,29 @@ class Validator():
                 pred_scene = pred_i * 2 + self.dim_clip
                 plt.plot(pred_scene[:, 0], pred_scene[:, 1], color=colors[i_p], linewidth=0.5, marker='o', markersize=0.5)
         plt.plot(future_scene[:, 0], future_scene[:, 1], c='green', linewidth=1, marker='o', markersize=1)
-        #label='Prob: ' + str(probs[i_p])
-        plt.title('HE 1s: ' + str(horizon_dist[0]) + ' HE 2s: ' + str(horizon_dist[1]) + ' HE 3s: ' + str(
-            horizon_dist[2]) + ' HE 4s: ' + str(horizon_dist[3]))
+        plt.title('FDE 1s: ' + str(horizon_dist[0]) + ' FDE 2s: ' + str(horizon_dist[1]) + ' FDE 3s: ' +
+                  str(horizon_dist[2]) + ' FDE 4s: ' + str(horizon_dist[3]))
         plt.axis('equal')
-        #plt.legend()
 
         if save_fig:
             plt.savefig(path + video_id + '_' + vec_id + '_' + str(index_tracklet).zfill(3) + '.png')
         plt.close(fig)
 
 
-    def evaluate(self, loader, epoch=0):
+    def evaluate(self, loader):
         """
         Evaluate model. Future trajectories are predicted and
         :param loader: data loader for testing data
-        :param epoch: epoch index (default: 0)
         :return: dictionary of performance metrics
         """
 
         self.mem_n2n.eval()
-
-        videos_json = {}
-        test_ids = self.data_test.ids_split_test
-        for ids in test_ids:
-            videos_json['video_' + str(ids).zfill(4)] = {}
-            for i_temp in range(self.data_test.video_length[str(ids).zfill(4)]):
-                videos_json['video_' + str(ids).zfill(4)]['frame_' + str(i_temp).zfill(3)] = {}
-
         with torch.no_grad():
             dict_metrics = {}
             eucl_mean = ADE_1s = ADE_2s = ADE_3s = horizon10s = horizon20s = horizon30s = horizon40s = 0
 
-            for step, (index, past, future, presents, angle_presents, videos, vehicles, number_vec, scene, scene_one_hot) in enumerate(loader):
+            for step, (index, past, future, presents, angle_presents, videos, vehicles, number_vec, scene, scene_one_hot) \
+                    in enumerate(tqdm.tqdm(loader)):
                 past = Variable(past)
                 future = Variable(future)
                 if self.config.cuda:
@@ -209,7 +198,6 @@ class Validator():
                 eucl_mean += sum(torch.mean(distance_pred[:, :40], dim=1))
 
                 if self.config.saveImages is not None:
-
                     for i in range(len(past)):
                         horizon_dist = [round(distance_pred[i, 9].item(), 3), round(distance_pred[i, 19].item(), 3),
                                         round(distance_pred[i, 29].item(), 3), round(distance_pred[i, 39].item(), 3)]
@@ -218,12 +206,11 @@ class Validator():
                         num_vec = number_vec[i]
                         index_track = index[i].numpy()
                         angle = angle_presents[i].cpu()
-                        horizon_dist = [distance_pred[i,9], ]
 
-                        if not os.path.exists(self.folder_test + vid):
-                            os.makedirs(self.folder_test + vid)
-                        video_path = self.folder_test + vid + '/'
                         if self.config.saveImages == 'All':
+                            if not os.path.exists(self.folder_test + vid):
+                                os.makedirs(self.folder_test + vid)
+                            video_path = self.folder_test + vid + '/'
                             if not os.path.exists(video_path + vec + num_vec):
                                 os.makedirs(video_path + vec + num_vec)
                             vehicle_path = video_path + vec + num_vec + '/'
@@ -239,17 +226,6 @@ class Validator():
                                 self.draw_track(past[i], future[i], scene[i], pred[i], angle, vid, vec + num_vec,
                                                 index_tracklet=index_track, save_fig=True,
                                                 path=highlights_path, horizon_dist=horizon_dist)
-
-            # for vid in self.data_test.structure.keys():
-            #     with open(self.folder_test + vid + '/' + 'evaluate_tracks_' + vid + '.csv', 'w') as f:
-            #         writer = csv.writer(f, delimiter='\t')
-            #         writer.writerow(['Vehicle', 'Num', 'HE 1s', 'HE 2s',
-            #                          'HE 3s', 'HE 4s'])
-            #         for vec in self.data_test.structure[vid].keys():
-            #             temp = [v for v in self.data_test.structure[vid][vec].values()]
-            #             temp.insert(0, vec)
-            #             temp[-4:] = (np.array(temp[-4:]) / temp[1]).round(3)
-            #             writer.writerow(temp)
 
             dict_metrics['eucl_mean'] = eucl_mean / len(loader.dataset)
             dict_metrics['ADE_1s'] = ADE_1s / len(loader.dataset)
@@ -287,7 +263,8 @@ class Validator():
             list_err3 = []
             list_err4 = []
 
-            for step, (index, past, future, presents, angle_presents, videos, vehicles, number_vec, scene, scene_one_hot) in enumerate(loader):
+            for step, (index, past, future, presents, angle_presents, videos, vehicles, number_vec, scene, scene_one_hot) \
+                    in enumerate(tqdm.tqdm(loader)):
                 past = Variable(past)
                 future = Variable(future)
                 if self.config.cuda:
@@ -353,16 +330,15 @@ class Validator():
         :return: loss
         """
 
-        self.mem_n2n.memory_count = torch.Tensor().cuda()
         if memory_saved:
-            # self.mem_n2n.memory_past = torch.load('pretrained_models/memory_saved/memory_past.pt')
-            # self.mem_n2n.memory_fut = torch.load('pretrained_models/memory_saved/memory_fut.pt')
+            self.mem_n2n.memory_past = torch.load('pretrained_models/memory_saved/cvpr/memory_past.pt')
+            self.mem_n2n.memory_fut = torch.load('pretrained_models/memory_saved/cvpr/memory_fut.pt')
             print('ok memory')
         else:
             self.mem_n2n.init_memory(self.data_train)
             config = self.config
             with torch.no_grad():
-                for step, (index, past, future, _, _, _, _, _, _, _) in enumerate(self.train_loader):
+                for step, (index, past, future, _, _, _, _, _, _, _) in enumerate(tqdm.tqdm(self.train_loader)):
                     self.iterations += 1
                     past = Variable(past)
                     future = Variable(future)
@@ -395,7 +371,7 @@ class Validator():
         incremental_results.append(res)
         with torch.no_grad():
             for epoch in range(10):
-                for step, (index, past, future, _, _, _, _, _, _, scene_one_hot) in enumerate(self.train_loader):
+                for step, (index, past, future, _, _, _, _, _, _, scene_one_hot) in enumerate(tqdm.tqdm(self.train_loader)):
                     mem_size = self.mem_n2n.memory_past.shape[0]
                     print('mem_size {}'.format(mem_size))
                     if mem_size <= self.config.preds:
@@ -428,24 +404,3 @@ class Validator():
             # torch.save(self.mem_n2n.memory_past, self.folder_test + 'memory_past.pt')
             # torch.save(self.mem_n2n.memory_fut, self.folder_test + 'memory_fut.pt')
 
-
-# self.data_test.structure[vid][vec + num_vec]['HE_1s'] += he_1s
-# self.data_test.structure[vid][vec + num_vec]['HE_2s'] += he_2s
-# self.data_test.structure[vid][vec + num_vec]['HE_3s'] += he_3s
-# self.data_test.structure[vid][vec + num_vec]['HE_4s'] += he_4s
-#
-# # json
-# # usare angle
-# # present = presents[i].cpu()
-# # st = past[i].cpu() + present
-# # fu = future[i].cpu() + present
-# # pr = pred_good.cpu() + present
-# # videos_json['video_' + vid]['frame_' + str(index_track).zfill(3)][vec + num_vec] = {}
-# # videos_json['video_' + vid]['frame_' + str(index_track).zfill(3)][vec + num_vec][
-# #     'pred'] = pr.tolist()
-# # videos_json['video_' + vid]['frame_' + str(index_track).zfill(3)][vec + num_vec][
-# #     'past'] = st.tolist()
-# # videos_json['video_' + vid]['frame_' + str(index_track).zfill(3)][vec + num_vec][
-# #     'fut'] = fu.tolist()
-# # videos_json['video_' + vid]['frame_' + str(index_track).zfill(3)][vec + num_vec][
-# #     'present'] = present.tolist()
