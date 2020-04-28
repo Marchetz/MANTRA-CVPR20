@@ -33,8 +33,8 @@ class Trainer():
         self.dim_clip = 180
         print('Creating dataset...')
         self.data_train = dataset_invariance.TrackDataset(tracks,
-                                               num_instances=config.past_len,
-                                               num_labels=config.future_len,
+                                               len_past=config.past_len,
+                                               len_future=config.future_len,
                                                train=True,
                                                dim_clip=self.dim_clip
                                                )
@@ -44,8 +44,8 @@ class Trainer():
                                        shuffle=True
                                        )
         self.data_test = dataset_invariance.TrackDataset(tracks,
-                                              num_instances=config.past_len,
-                                              num_labels=config.future_len,
+                                              len_past=config.past_len,
+                                              len_future=config.future_len,
                                               train=False,
                                               dim_clip=self.dim_clip
                                               )
@@ -148,9 +148,7 @@ class Trainer():
         Autoencoder training procedure. The function loops over the data in the training set max_epochs times.
         :return: None
         """
-
         config = self.config
-
         # Training loop
         for epoch in range(self.start_epoch, config.max_epochs):
 

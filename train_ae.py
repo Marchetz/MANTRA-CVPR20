@@ -7,7 +7,7 @@ def parse_config():
     parser.add_argument("--cuda", default=True)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--learning_rate", type=int, default=0.0001)
-    parser.add_argument("--max_epochs", type=int, default=1000)
+    parser.add_argument("--max_epochs", type=int, default=600)
 
     parser.add_argument("--past_len", type=int, default=20, help="length of past (in timesteps)")
     parser.add_argument("--future_len", type=int, default=40, help="length of future (in timesteps)")

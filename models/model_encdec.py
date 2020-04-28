@@ -33,9 +33,8 @@ class model_encdec(nn.Module):
         self.decoder = nn.GRU(self.dim_embedding_key * 2, self.dim_embedding_key * 2, 1, batch_first=False)
         self.FC_output = torch.nn.Linear(self.dim_embedding_key * 2, 2)
         self.relu = nn.ReLU()
-        self.dropout = nn.Dropout()
 
-        # weight initialization: xavier
+        # weight initialization: kaiming
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -88,7 +87,6 @@ class model_encdec(nn.Module):
 
         # concatenate
         state_conc = torch.cat((state_past, state_fut), 2)
-
         input_fut = state_conc
         state_fut = zero_padding
         for i in range(self.future_len):
