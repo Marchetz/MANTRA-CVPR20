@@ -1,4 +1,3 @@
-
 import numpy as np
 import torch
 import torch.utils.data as data
@@ -7,15 +6,13 @@ import os
 from matplotlib.colors import LinearSegmentedColormap
 import cv2
 import math
-import pdb
-
-#TODO: check!
 import test_remove_index
 
 colors = [(0, 0, 0), (0.87, 0.87, 0.87), (0.54, 0.54, 0.54), (0.29, 0.57, 0.25)]
 cmap_name = 'scene_list'
 cm = LinearSegmentedColormap.from_list(
     cmap_name, colors, N=4)
+
 
 class TrackDataset(data.Dataset):
     """
@@ -25,11 +22,10 @@ class TrackDataset(data.Dataset):
     """
     def __init__(self, tracks, len_past, len_future, train, dim_clip):
 
-        self.remove_index = test_remove_index.index    #index of examples with noise map
+        self.remove_index = test_remove_index.index    # index of examples with noise map
         self.tracks = tracks      # dataset dict
         self.dim_clip = dim_clip  # dim_clip*2 is the dimension of scene (pixel)
         self.video_length = {}
-        self.structure = {}       # dictionary to save the results for each vehicles in evaluation phase
         self.is_train = train
 
         self.video_track = []     # '0001'
@@ -40,8 +36,8 @@ class TrackDataset(data.Dataset):
         self.presents = []        # position in complete scene
         self.angle_presents = []  # trajectory angle in complete scene
         self.futures = []         # [len_future, 2]
-        self.scene = []           # [dim_clip, dim_clip, 1]
-        self.scene_crop = []      # [dim_clip, dim_clip, 4]
+        self.scene = []           # [dim_clip, dim_clip, 1], scene fot qualitative examples
+        self.scene_crop = []      # [dim_clip, dim_clip, 4], input to IRM
 
         num_total = len_past + len_future
         self.video_split, self.ids_split_test = self.get_desire_track_files(train)
@@ -60,17 +56,9 @@ class TrackDataset(data.Dataset):
             scene_track_onehot[np.where(scene_track_onehot == 3)] = 0
             scene_track_onehot[np.where(scene_track_onehot == 4)] -= 1
 
-            self.structure[video_id] = {}
             for vec in vehicles:
                 class_vec = tracks[video][vec]['cls']
                 num_vec = vec.split('_')[1]
-                self.structure[video_id][class_vec + num_vec] = {}
-                self.structure[video_id][class_vec + num_vec]['num_examples'] = 0
-                self.structure[video_id][class_vec + num_vec]['HE_1s'] = 0
-                self.structure[video_id][class_vec + num_vec]['HE_2s'] = 0
-                self.structure[video_id][class_vec + num_vec]['HE_3s'] = 0
-                self.structure[video_id][class_vec + num_vec]['HE_4s'] = 0
-
                 start_frame = tracks[video][vec]['start']
                 points = np.array(tracks[video][vec]['trajectory']).T
                 len_track = len(points)
@@ -101,7 +89,7 @@ class TrackDataset(data.Dataset):
                                                   int(origin[1]) * 2 - self.dim_clip:int(origin[1]) * 2 + self.dim_clip,
                                                   int(origin[0]) * 2 - self.dim_clip:int(origin[0]) * 2 + self.dim_clip]
 
-                        #rotation invariance
+                        # rotation invariance
                         unit_y_axis = torch.Tensor([0, -1])
                         vector = temp_past[-5]
                         if vector[0] > 0.0:
@@ -118,7 +106,6 @@ class TrackDataset(data.Dataset):
                                            borderValue=0,
                                            flags=cv2.INTER_NEAREST) #(1, 0, 0, 0)
 
-                        self.structure[video_id][class_vec + num_vec]['num_examples'] += 1
                         self.index.append(count + 19 + start_frame)
                         self.pasts.append(past_rot)
                         self.futures.append(future_rot)
@@ -139,32 +126,17 @@ class TrackDataset(data.Dataset):
         self.number_vec = np.array(self.number_vec)
         self.scene = np.array(self.scene)
 
-    # def save_scenes_with_tracks(self, folder_save):
-    #     for video in self.video_split:
-    #         fig = plt.figure()
-    #         video_id = video[-9:-5]
-    #         im = plt.imread('maps/2011_09_26__2011_09_26_drive_' + video_id + '_sync_map.png')
-    #         implot = plt.imshow(im, cmap=cm)
-    #         for t in self.tracks[video].keys():
-    #             points = np.array(self.tracks[video][t]['trajectory']).T
-    #             if len(points.shape) > 1:
-    #                 plt.plot(points[:, 0] * 2, points[:, 1] * 2)
-    #         plt.savefig(folder_save + video_id + '.png')
-    #         plt.close(fig)
-
     def save_dataset(self, folder_save):
 
-        for i in range(len(self.instances)):
+        for i in range(self.pasts.shape[0]):
             video = self.video_track[i]
             vehicle = self.vehicles[i]
             number = self.number_vec[i]
-            past = self.instances[i]
+            past = self.pasts[i]
             future = self.futures[i]
             scene_track = self.scene_crop[i]
 
-            #saving_list = ['only_tracks', 'only_scenes', 'tracks_on_scene']
-            saving_list = ['tracks_on_scene']
-
+            saving_list = ['only_tracks', 'only_scenes', 'tracks_on_scene']
             for sav in saving_list:
                 folder_save_type = folder_save + sav + '/'
                 if not os.path.exists(folder_save_type + video):
@@ -181,7 +153,6 @@ class TrackDataset(data.Dataset):
                     self.draw_track_in_scene(past, scene_track, index_tracklet=self.index[i], future=future, path=vehicle_path)
 
     def draw_track(self, past, future, index_tracklet, path):
-        #past = past.cpu().numpy()
         plt.plot(past[:, 0], -past[:, 1], c='blue', marker='o', markersize=1)
         if future is not None:
             future = future.cpu().numpy()
@@ -191,12 +162,11 @@ class TrackDataset(data.Dataset):
         plt.close()
 
     def draw_scene(self, scene_track, index_tracklet, path):
+        # print semantic map
         cv2.imwrite(path + str(index_tracklet) + '.png', scene_track)
 
     def draw_track_in_scene(self, story, scene_track, index_tracklet, future=None, path=''):
         plt.imshow(scene_track, cmap=cm)
-        #story = story.cpu().numpy()
-        #future = future.cpu().numpy()
         plt.plot(story[:, 0] * 2 + self.dim_clip, story[:, 1] * 2 + self.dim_clip, c='blue', marker='o', markersize=1)
         plt.plot(future[:, 0] * 2 + self.dim_clip, future[:, 1] * 2 + self.dim_clip, c='green', marker='o', markersize=1)
         plt.savefig(path + str(index_tracklet) + '.png')
@@ -218,7 +188,6 @@ class TrackDataset(data.Dataset):
         tracklet_files = ['video_2011_09_26__2011_09_26_drive_' + str(x).zfill(4) + '_sync'
                           for x in desire_ids]
         return tracklet_files, desire_ids
-
 
     def unit_vector(self, vector):
         """ Returns the unit vector of the vector.  """
