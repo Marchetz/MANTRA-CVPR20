@@ -73,8 +73,8 @@ class model_encdec(nn.Module):
 
         # temporal encoding for past
         past = torch.transpose(past, 1, 2)
-        story_embed = self.relu(self.conv_past(past))
-        story_embed = torch.transpose(story_embed, 1, 2)
+        past_embed = self.relu(self.conv_past(past))
+        past_embed = torch.transpose(past_embed, 1, 2)
 
         # temporal encoding for future
         future = torch.transpose(future, 1, 2)
@@ -82,7 +82,7 @@ class model_encdec(nn.Module):
         future_embed = torch.transpose(future_embed, 1, 2)
 
         # sequence encoding
-        output_past, state_past = self.encoder_past(story_embed)
+        output_past, state_past = self.encoder_past(past_embed)
         output_fut, state_fut = self.encoder_fut(future_embed)
 
         # concatenate

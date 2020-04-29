@@ -72,7 +72,6 @@ class Trainer():
         # loss
         self.criterionLoss = nn.MSELoss()
 
-        self.EuclDistance = nn.PairwiseDistance(p=2)
         self.opt = torch.optim.Adam(self.mem_n2n.parameters(), lr=config.learning_rate)
         self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.opt, 0.5)
         self.iterations = 0

@@ -15,6 +15,7 @@ from torch.autograd import Variable
 import csv
 import time
 import tqdm
+from models.model_decoder import model_decoder
 
 
 class Validator():
@@ -34,8 +35,6 @@ class Validator():
         self.dim_clip = 180
         print('creating dataset...')
         self.data_train = dataset_invariance.TrackDataset(tracks,
-                                                          len_past=config.past_len,
-                                                          len_future=config.future_len,
                                                           train=True,
                                                           dim_clip=self.dim_clip)
 
@@ -45,8 +44,6 @@ class Validator():
                                        shuffle=True)
 
         self.data_test = dataset_invariance.TrackDataset(tracks,
-                                                         len_past=config.past_len,
-                                                         len_future=config.future_len,
                                                          train=False,
                                                          dim_clip=self.dim_clip)
 
@@ -60,16 +57,7 @@ class Validator():
             self.data_train.save_dataset(self.folder_test + 'dataset_train/')
             self.data_test.save_dataset(self.folder_test + 'dataset_test/')
 
-        self.settings = {
-            "batch_size": config.batch_size,
-            "use_cuda": config.cuda,
-            "dim_embedding_key": config.dim_embedding_key,
-            "num_prediction": config.preds,
-            "past_len": config.past_len,
-            "future_len": config.future_len
-        }
-
-        # load model to evaluate
+        #load model to evaluate
         self.mem_n2n = torch.load(config.model)
         self.mem_n2n.num_prediction = config.preds
         self.mem_n2n.future_len = config.future_len
@@ -88,7 +76,7 @@ class Validator():
         """
         # populate the memory
         start = time.time()
-        self._memory_writing(self.config.memory_saved)
+        self._memory_writing(self.config.saved_memory)
         end = time.time()
         print('writing time: ' + str(end-start))
 
@@ -107,7 +95,7 @@ class Validator():
         self.file = open(self.folder_test + "results.txt", "w")
         self.file.write("TEST:" + '\n')
 
-        self.file.write("model:" + self.config.model + '\n')
+        #self.file.write("model:" + self.config.model + '\n')
         self.file.write("split test: " + str(self.data_test.ids_split_test) + '\n')
         self.file.write("num_predictions:" + str(self.config.preds) + '\n')
         self.file.write("memory size: " + str(len(self.mem_n2n.memory_past)) + '\n')
@@ -175,27 +163,57 @@ class Validator():
                 if self.config.cuda:
                     past = past.cuda()
                     future = future.cuda()
-                if self.config.withMRI:
+                if self.config.withIRM:
                     scene_one_hot = Variable(scene_one_hot)
                     scene_one_hot = scene_one_hot.cuda()
                     pred = self.mem_n2n(past, scene_one_hot)
                 else:
                     pred = self.mem_n2n(past)
 
-                future_rep = future.unsqueeze(1).repeat(1, self.config.preds, 1, 1)
-                distances = torch.norm(pred - future_rep, dim=3)
-                mean_distances = torch.mean(distances, dim=2)
-                index_min = torch.argmin(mean_distances, dim=1)
-                distance_pred = distances[torch.arange(0, len(index_min)), index_min]
+                #nuovo
+                for i in range(len(past)):
+                    list_error_single_pred_mean = []
+                    list_error_single_pred_4s = []
+                    for i_multiple in range(len(pred[i])):
+                        pred_one = pred[i][i_multiple]
+                        dist = self.EuclDistance(pred_one, future[i, :])
+                        list_error_single_pred_mean.append(round(torch.mean(dist).item(),3))
+                        list_error_single_pred_4s.append(round(dist[39].item(), 3))
+                    #i_min = np.argmin(list_error_single_pred_mean)
+                    i_min = np.argmin(list_error_single_pred_4s)
 
-                horizon10s += sum(distance_pred[:, 9])
-                horizon20s += sum(distance_pred[:, 19])
-                horizon30s += sum(distance_pred[:, 29])
-                horizon40s += sum(distance_pred[:, 39])
-                ADE_1s += sum(torch.mean(distance_pred[:, :10], dim=1))
-                ADE_2s += sum(torch.mean(distance_pred[:, :20], dim=1))
-                ADE_3s += sum(torch.mean(distance_pred[:, :30], dim=1))
-                eucl_mean += sum(torch.mean(distance_pred[:, :40], dim=1))
+                    dist = self.EuclDistance(pred[i][i_min], future[i, :])
+                    he_1s = round(dist[9].item(), 3)
+                    he_2s = round(dist[19].item(), 3)
+                    he_3s = round(dist[29].item(), 3)
+                    he_4s = round(dist[39].item(), 3)
+                    horizon_dist = [he_1s, he_2s, he_3s, he_4s]
+                    eucl_mean += round(torch.mean(dist).item(), 3)
+                    ADE_1s += round(torch.mean(dist[:10]).item(), 3)
+                    ADE_2s += round(torch.mean(dist[:20]).item(), 3)
+                    ADE_3s += round(torch.mean(dist[:30]).item(), 3)
+                    horizon10s += he_1s
+                    horizon20s += he_2s
+                    horizon30s += he_3s
+                    horizon40s += he_4s
+                ###
+
+
+
+                # future_rep = future.unsqueeze(1).repeat(1, self.config.preds, 1, 1)
+                # distances = torch.norm(pred - future_rep, dim=3)
+                # mean_distances = torch.mean(distances, dim=2)
+                # index_min = torch.argmin(mean_distances, dim=1)
+                # distance_pred = distances[torch.arange(0, len(index_min)), index_min]
+                #
+                # horizon10s += sum(distance_pred[:, 9])
+                # horizon20s += sum(distance_pred[:, 19])
+                # horizon30s += sum(distance_pred[:, 29])
+                # horizon40s += sum(distance_pred[:, 39])
+                # ADE_1s += sum(torch.mean(distance_pred[:, :10], dim=1))
+                # ADE_2s += sum(torch.mean(distance_pred[:, :20], dim=1))
+                # ADE_3s += sum(torch.mean(distance_pred[:, :30], dim=1))
+                # eucl_mean += sum(torch.mean(distance_pred[:, :40], dim=1))
 
                 if self.config.saveImages is not None:
                     for i in range(len(past)):
@@ -238,6 +256,33 @@ class Validator():
 
         return dict_metrics
 
+    def _memory_writing(self, saved_memory):
+        """
+        writing in the memory with controller (loop over all train dataset)
+        :return: loss
+        """
+
+        if saved_memory:
+            # self.mem_n2n.memory_past = torch.load(self.config.memories_path + 'memory_past.pt')
+            # self.mem_n2n.memory_fut = torch.load(self.config.memories_path + 'memory_fut.pt')
+            print('ok memory')
+        else:
+            self.mem_n2n.init_memory(self.data_train)
+            config = self.config
+            with torch.no_grad():
+                for step, (index, past, future, _, _, _, _, _, _, _) in enumerate(tqdm.tqdm(self.train_loader)):
+                    self.iterations += 1
+                    past = Variable(past)
+                    future = Variable(future)
+                    if config.cuda:
+                        past = past.cuda()
+                        future = future.cuda()
+                    self.mem_n2n.write_in_memory(past, future)
+
+                # save memory
+                torch.save(self.mem_n2n.memory_past, self.folder_test + 'memory_past.pt')
+                torch.save(self.mem_n2n.memory_fut, self.folder_test + 'memory_fut.pt')
+
     def evaluate_slim(self, loader):
         """
         Evaluate model. Future trajectories are predicted and
@@ -270,7 +315,7 @@ class Validator():
                 if self.config.cuda:
                     past = past.cuda()
                     future = future.cuda()
-                if self.config.withMRI:
+                if self.config.withIRM:
                     scene_one_hot = Variable(scene_one_hot)
                     scene_one_hot = scene_one_hot.cuda()
                     pred = self.mem_n2n(past, scene_one_hot)
@@ -324,32 +369,6 @@ class Validator():
 
         return dict_metrics
 
-    def _memory_writing(self, memory_saved):
-        """
-        writing in the memory with controller (loop over all train dataset)
-        :return: loss
-        """
-
-        if memory_saved:
-            self.mem_n2n.memory_past = torch.load('pretrained_models/memory_saved/cvpr/memory_past.pt')
-            self.mem_n2n.memory_fut = torch.load('pretrained_models/memory_saved/cvpr/memory_fut.pt')
-            print('ok memory')
-        else:
-            self.mem_n2n.init_memory(self.data_train)
-            config = self.config
-            with torch.no_grad():
-                for step, (index, past, future, _, _, _, _, _, _, _) in enumerate(tqdm.tqdm(self.train_loader)):
-                    self.iterations += 1
-                    past = Variable(past)
-                    future = Variable(future)
-                    if config.cuda:
-                        past = past.cuda()
-                        future = future.cuda()
-                    self.mem_n2n.write_in_memory(past, future)
-
-                # save memory
-                torch.save(self.mem_n2n.memory_past, self.folder_test + 'memory_past.pt')
-                torch.save(self.mem_n2n.memory_fut, self.folder_test + 'memory_fut.pt')
 
     def load(self, directory):
         pass

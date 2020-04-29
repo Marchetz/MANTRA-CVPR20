@@ -37,8 +37,8 @@ class Trainer():
         self.dim_clip = 180
         print('creating dataset...')
         self.data_train = dataset_invariance.TrackDataset(tracks,
-                                                          num_instances=config.past_len,
-                                                          num_labels=config.future_len,
+                                                          len_past=config.past_len,
+                                                          len_future=config.future_len,
                                                           train=True,
                                                           dim_clip=self.dim_clip
                                                           )
@@ -50,8 +50,8 @@ class Trainer():
                                        )
 
         self.data_test = dataset_invariance.TrackDataset(tracks,
-                                                         num_instances=config.past_len,
-                                                         num_labels=config.future_len,
+                                                         len_past=config.past_len,
+                                                         len_future=config.future_len,
                                                          train=False,
                                                          dim_clip=self.dim_clip
                                                          )
@@ -72,18 +72,15 @@ class Trainer():
         }
         self.max_epochs = config.max_epochs
         # load pretrained model and create memory model
-        self.model_pretrained = torch.load(config.model_ae)
-        self.mem_n2n = model_controllerMem(self.settings, self.model_pretrained)
+        self.model_ae = torch.load(config.model_ae)
+        self.mem_n2n = model_controllerMem(self.settings, self.model_ae)
         self.mem_n2n.future_len = config.future_len
         self.mem_n2n.past_len = config.past_len
-        
-        self.EuclDistance = nn.PairwiseDistance(p=2)
-        self.criterionLoss = nn.MSELoss()
+
         self.opt = torch.optim.Adam(self.mem_n2n.parameters(), lr=config.learning_rate)
         self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.opt, 0.5)
         self.iterations = 0
         if config.cuda:
-            self.criterionLoss = self.criterionLoss.cuda()
             self.mem_n2n = self.mem_n2n.cuda()
         self.start_epoch = 0
         self.config = config
@@ -204,7 +201,6 @@ class Trainer():
         """
         Serialize results
         :param dict_metrics_test: dictionary with test metrics
-        :param dict_metrics_train: dictionary with train metrics
         :param epoch: epoch index (default: 0)
         :return: None
         """
@@ -307,8 +303,9 @@ class Trainer():
                 vec = vehicles[0]
                 num_vec = number_vec[0]
                 index_track = index[0].numpy()
+                angle = angle_presents[0].cpu()
                 if loader == self.test_loader:
-                    self.draw_track(past[0], future[0], scene[0], pred[0], vid, vec + num_vec,
+                    self.draw_track(past[0], future[0], scene[0], pred[0], angle, vid, vec + num_vec,
                                     index_tracklet=index_track, num_epoch=epoch)
 
             dict_metrics['eucl_mean'] = eucl_mean / len(loader.dataset)
@@ -365,7 +362,7 @@ class Trainer():
                 if config.cuda:
                     past = past.cuda()
                     future = future.cuda()
-                prob, sim = self.mem_n2n(past, future)
+                _, _ = self.mem_n2n(past, future)
 
     def load(self, directory):
         pass

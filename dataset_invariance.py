@@ -7,6 +7,7 @@ from matplotlib.colors import LinearSegmentedColormap
 import cv2
 import math
 import test_remove_index
+import pdb
 
 colors = [(0, 0, 0), (0.87, 0.87, 0.87), (0.54, 0.54, 0.54), (0.29, 0.57, 0.25)]
 cmap_name = 'scene_list'
@@ -20,7 +21,7 @@ class TrackDataset(data.Dataset):
     The building class is merged into the background class
     0:background 1:street 2:sidewalk, 3:building 4: vegetation ---> 0:background 1:street 2:sidewalk, 3: vegetation
     """
-    def __init__(self, tracks, len_past, len_future, train, dim_clip):
+    def __init__(self, tracks, len_past=20, len_future=40, train=False, dim_clip=180):
 
         self.remove_index = test_remove_index.index    # index of examples with noise map
         self.tracks = tracks      # dataset dict
@@ -41,7 +42,7 @@ class TrackDataset(data.Dataset):
 
         num_total = len_past + len_future
         self.video_split, self.ids_split_test = self.get_desire_track_files(train)
-
+        tot = 0
         # Preload data
         for video in self.video_split:
             vehicles = self.tracks[video].keys()
@@ -76,11 +77,16 @@ class TrackDataset(data.Dataset):
                         else:
                             temp_past = temp_past - origin
 
-                        if np.var(temp_future[:, 0]) < 0.1 and np.var(temp_future[:, 1]) < 0.1:
+                        if np.var(temp_past[:, 0]) < 0.1 and np.var(temp_past[:, 1]) < 0.1:
+                        # if np.var(temp_future[:, 0]) < 0.1 and np.var(temp_future[:, 1]) < 0.1:
+                            if train == False:
+                                tot += 1
+                                print(video_id + '_' + class_vec + num_vec + '_' + str(count + 19 + start_frame))
                             temp_future = np.zeros((40, 2))
                         else:
                             temp_future = temp_future - origin
-
+                        # temp_past = temp_past - origin
+                        # temp_future = temp_future - origin
                         scene_track_clip = scene_track[
                                            int(origin[1]) * 2 - self.dim_clip:int(origin[1]) * 2 + self.dim_clip,
                                            int(origin[0]) * 2 - self.dim_clip:int(origin[0]) * 2 + self.dim_clip]
@@ -117,6 +123,9 @@ class TrackDataset(data.Dataset):
                         self.scene.append(scene_track_clip)
                         self.scene_crop.append(scene_track_onehot_clip)
 
+        # if train ==  False:
+        #     print(tot)
+        #     pdb.set_trace()
         self.index = np.array(self.index)
         self.pasts = torch.FloatTensor(self.pasts)
         self.futures = torch.FloatTensor(self.futures)

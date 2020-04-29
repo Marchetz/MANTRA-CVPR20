@@ -11,7 +11,7 @@ class model_decoder(nn.Module):
     """
     Memory Network model with learnable writing controller. [Work in progress]
     """
-    def __init__(self, settings, model_pretrained, model_controller):
+    def __init__(self, settings, model_pretrained):
         super(model_decoder, self).__init__()
         self.name_model = 'train_decoder_with_memory'
 
@@ -44,7 +44,7 @@ class model_decoder(nn.Module):
         self.relu = nn.ReLU()
         self.softmax = nn.Softmax()
 
-        self.linear_controller = model_controller.linear_controller
+        self.linear_controller = model_pretrained.linear_controller
 
     def init_memory(self, data_train):
         """
@@ -135,7 +135,7 @@ class model_decoder(nn.Module):
         past_normalized = F.normalize(self.memory_past, p=2, dim=1)
         state_normalized = F.normalize(state_past.squeeze(dim=0), p=2, dim=1)
         self.weight_read = torch.matmul(past_normalized, state_normalized.transpose(0, 1)).transpose(0, 1)
-        self.index_max = torch.sort(self.weight_read, descending=True)[1].cpu()[:,:self.num_prediction]
+        self.index_max = torch.sort(self.weight_read, descending=True)[1].cpu()[:, :self.num_prediction]
         present = present_temp.repeat_interleave(self.num_prediction, dim=0)
         state_past = state_past.repeat_interleave(self.num_prediction, dim=1)
         ind = self.index_max.flatten()
@@ -213,8 +213,8 @@ class model_decoder(nn.Module):
         tolerance_1s = torch.sum(distances[:, :, :10] < 0.5, dim=2)
         tolerance_2s = torch.sum(distances[:, :, 10:20] < 1.0, dim=2)
         tolerance_3s = torch.sum(distances[:, :, 20:30] < 1.5, dim=2)
-        #tolerance_4s = torch.sum(distances[:, :, 30:40] < 2, dim=2)
-        tolerance = tolerance_1s + tolerance_2s + tolerance_3s
+        tolerance_4s = torch.sum(distances[:, :, 30:40] < 2, dim=2)
+        tolerance = tolerance_1s + tolerance_2s + tolerance_3s + tolerance_4s
         tolerance_rate = torch.max(tolerance, dim=1)[0].type(torch.FloatTensor) / 40
         tolerance_rate = tolerance_rate.unsqueeze(1).cuda()
 
@@ -230,12 +230,8 @@ class model_decoder(nn.Module):
         #ablation study: all tracks in memory
         #index_writing = np.where(writing_prob.cpu() > 0)[0]
         index_writing = np.where( writing_prob.cpu() > 0.5)[0]
-
-
         past_to_write = state_past.squeeze()[index_writing]
         future_to_write = state_fut.squeeze()[index_writing]
-
-
         self.memory_past = torch.cat((self.memory_past, past_to_write), 0)
         self.memory_fut = torch.cat((self.memory_fut, future_to_write), 0)
 

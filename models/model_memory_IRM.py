@@ -186,10 +186,9 @@ class model_memory_IRM(nn.Module):
 
     def write_in_memory(self, past, future):
         """
-        Forward pass. Predicts future trajectory based on past trajectory and surrounding scene.
+        Writing controller decides if the pair past-future will be inserted in memory.
         :param past: past trajectory
         :param future: future trajectory
-        :return: predicted future
         """
 
         if (self.memory_past.shape[0] < self.num_prediction):
