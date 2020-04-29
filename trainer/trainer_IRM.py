@@ -43,8 +43,8 @@ class Trainer:
         self.dim_clip = 180
         print('creating dataset...')
         self.data_train = dataset_invariance.TrackDataset(tracks,
-                                                          num_instances=config.past_len,
-                                                          num_labels=config.future_len,
+                                                          len_past=config.past_len,
+                                                          len_future=config.future_len,
                                                           train=True,
                                                           dim_clip=self.dim_clip
                                                           )
@@ -56,8 +56,8 @@ class Trainer:
                                        )
 
         self.data_test = dataset_invariance.TrackDataset(tracks,
-                                                         num_instances=config.past_len,
-                                                         num_labels=config.future_len,
+                                                         len_past=config.past_len,
+                                                         len_future=config.future_len,
                                                          train=False,
                                                          dim_clip=self.dim_clip
                                                          )
@@ -67,11 +67,7 @@ class Trainer:
                                       num_workers=1,
                                       shuffle=False
                                       )
-        # print('dataset created')
-        # if config.visualize_dataset:
-        #     print('save examples in a folder test')
-        #     self.data_train.save_dataset(self.folder_test, mode='train')
-        #     self.data_test.save_dataset(self.folder_test, mode='test')
+        print('dataset created')
 
         self.num_prediction = config.preds
         self.settings = {
@@ -85,14 +81,12 @@ class Trainer:
         self.max_epochs = config.max_epochs
 
         # load pretrained model and create memory_model
-        self.model_ae = torch.load(config.model_ae)
-        self.model_controller = torch.load(config.model_controller)
-        self.mem_n2n = model_memory_IRM(self.settings, self.model_ae, self.model_controller)
+        self.model = torch.load(config.model)
+        self.mem_n2n = model_memory_IRM(self.settings, self.model)
         self.mem_n2n.past_len = config.past_len
         self.mem_n2n.future_len = config.future_len
 
         self.criterionLoss = nn.MSELoss()
-        self.EuclDistance = nn.PairwiseDistance(p=2)
         self.opt = torch.optim.Adam(self.mem_n2n.parameters(), lr=config.learning_rate)
         self.iterations = 0
         if config.cuda:
@@ -142,6 +136,8 @@ class Trainer:
             param.requires_grad = False
         for param in self.mem_n2n.encoder_fut.parameters():
             param.requires_grad = False
+        for param in self.mem_n2n.linear_controller.parameters():
+            param.requires_grad = False
         for param in self.mem_n2n.decoder.parameters():
             param.requires_grad = True
         for param in self.mem_n2n.FC_output.parameters():
@@ -150,14 +146,12 @@ class Trainer:
         # Load memory
         # populate the memory
         start = time.time()
-        self._memory_writing(self.config.memory_saved)
+        self._memory_writing(self.config.saved_memory)
         self.writer.add_text('Training Configuration', 'memory size: ' + str(len(self.mem_n2n.memory_past)), 0)
         end = time.time()
         print('writing time: ' + str(end-start))
 
-
         step_results = [1, 10, 20, 30, 40, 50, 60, 80, 90, 100, 120, 150, 170, 200, 250, 300, 350, 400, 450, 490, 550, 600]
-
         # Main training loop
         for epoch in range(self.start_epoch, config.max_epochs):
             self.mem_n2n.train()
@@ -186,8 +180,6 @@ class Trainer:
 
                 # Save model checkpoint
                 torch.save(self.mem_n2n, self.folder_test + 'model_IRM_epoch_' + str(epoch) + '_' + self.name_test)
-                #torch.save(self.mem_n2n, self.folder_test + 'model_' + str(dict_metrics_test['horizon40s'].detach().cpu().numpy()) + '_epoch_' + str(epoch) + '_' + self.name_test)
-
                 self.save_results(dict_metrics_test, epoch=epoch + 1)
 
             for name, param in self.mem_n2n.named_parameters():
@@ -265,17 +257,9 @@ class Trainer:
         """
 
         self.mem_n2n.eval()
-        videos_json = {}
-        test_ids = self.data_test.ids_split_test
-
-        for ids in test_ids:
-            videos_json['video_' + str(ids).zfill(4)] = {}
-            for i_temp in range(self.data_test.video_length[str(ids).zfill(4)]):
-                videos_json['video_' + str(ids).zfill(4)]['frame_' + str(i_temp).zfill(3)] = {}
-        self.mem_n2n.eval()
         with torch.no_grad():
             dict_metrics = {}
-            eucl_mean = ADE_1s = ADE_2s = ADE_3s =  horizon10s = horizon20s = horizon30s = horizon40s = 0
+            eucl_mean = ADE_1s = ADE_2s = ADE_3s = horizon10s = horizon20s = horizon30s = horizon40s = 0
 
             for step, (index, past, future, presents, angle_presents, videos, vehicles, number_vec, scene,
                        scene_one_hot) in enumerate(tqdm.tqdm(loader)):
@@ -350,27 +334,6 @@ class Trainer:
             best_pred = output[torch.arange(past.shape[0]), index_min[:]]
             loss = self.criterionLoss(best_pred, future)
 
-            #loss = self.criterionLoss(output, future_repeat)
-
-            #pdb.set_trace()
-            # best_pred = torch.Tensor().cuda()
-            # for i in range(len(past)):
-            #     list_error = []
-            #     for i_multiple in range(len(output[i])):
-            #         pred_one = output[i][i_multiple]
-            #         dist = self.EuclDistance(pred_one, future[i, :])
-            #         list_error.append(torch.mean(dist))
-            #         #list_error.append(dist[-1])
-            #     list_error = torch.stack(list_error)
-            #     i_min = torch.argmin(list_error)
-            #     best_pred = torch.cat((best_pred, output[i][i_min].unsqueeze(0)), 0)
-            # loss = self.criterionLoss(best_pred, future)
-
-            # compute loss with best predicted trajectory
-            #TODO: calcolare la loss con tutte le predizioni invece di una sola
-            #future_repeat = future.unsqueeze(1).repeat(1,self.num_prediction,1,1)
-            #loss = self.criterionLoss(output,future_repeat)
-
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.mem_n2n.parameters(), 1.0, norm_type=2)
             self.opt.step()
@@ -378,15 +341,14 @@ class Trainer:
 
         return loss.item()
 
-    def _memory_writing(self, memory_saved):
+    def _memory_writing(self, saved_memory):
         """
         writing in the memory with controller (loop over all train dataset)
         :return: loss
         """
 
-        if memory_saved:
-            self.mem_n2n.memory_past = torch.load('pretrained_models/memory_saved/memory_past.pt')
-            self.mem_n2n.memory_fut = torch.load('pretrained_models/memory_saved/memory_fut.pt')
+        if saved_memory:
+            print('memories of pretrained model')
         else:
             self.mem_n2n.init_memory(self.data_train)
             config = self.config
@@ -404,9 +366,3 @@ class Trainer:
         torch.save(self.mem_n2n.memory_past, self.folder_test + 'memory_past.pt')
         torch.save(self.mem_n2n.memory_fut, self.folder_test + 'memory_fut.pt')
 
-    def save_dataset(self):
-        self.data_test.save_dataset(self.folder_test)
-
-    def scene_complete_tracks(self):
-        self.data_train.save_scenes_with_tracks(self.folder_test)
-        self.data_test.save_scenes_with_tracks(self.folder_test)
