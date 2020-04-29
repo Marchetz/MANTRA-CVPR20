@@ -13,7 +13,7 @@ def parse_config():
     parser.add_argument("--future_len", type=int, default=40, help="length of future (in timesteps)")
     parser.add_argument("--dim_embedding_key", type=int, default=48)
 
-    parser.add_argument("--track_file", default="kitti_dataset.json", help="dataset file")
+    parser.add_argument("--dataset_file", default="kitti_dataset.json", help="dataset file")
     parser.add_argument("--info", type=str, default='', help='Name of training. '
                                                              'It will use in tensorboard log and test folder')
     return parser.parse_args()

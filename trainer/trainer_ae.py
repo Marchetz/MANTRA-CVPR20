@@ -28,7 +28,7 @@ class Trainer():
             os.makedirs(self.folder_test)
         self.folder_test = self.folder_test + '/'
         self.file = open(self.folder_test + "details.txt", "w")
-        tracks = json.load(open(config.track_file))
+        tracks = json.load(open(config.dataset_file))
 
         self.dim_clip = 180
         print('Creating dataset...')

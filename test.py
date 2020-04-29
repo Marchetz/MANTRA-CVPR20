@@ -9,23 +9,11 @@ def parse_config():
     parser.add_argument("--future_len", type=int, default=40)
     parser.add_argument("--preds", type=int, default=5)
 
-    #model_ok_cvpr
-    # parser.add_argument("--model", default='pretrained_models/MANTRA/model_MANTRA')
-
-    #model_controller_last
-    parser.add_argument("--model", default='pretrained_models/model_controller/model_controller')
-
-
-    # parser.add_argument("--model_ae", default='pretrained_models/model_AE/model_ae_epoch_959_2020-04-26 23')
-    # parser.add_argument("--model_controller", default='pretrained_models/model_controller/model2019-10-22 09:55:58')
-    # parser.add_argument("--model", default='pretrained_models/model_controller/model_controller_2020-04-27 23:12:06')
-    #parser.add_argument("--model", default='pretrained_models/model_epoch1492019-11-19 10:41:43')
-    #parser.add_argument("--model", default='pretrained_models/model_IRM_epoch_449')
-
+    parser.add_argument("--model", default='pretrained_models/MANTRA/model_MANTRA')
     parser.add_argument("--visualize_dataset", default=False)
-    parser.add_argument("--saved_memory", default=True)
+    parser.add_argument("--saved_memory", default=False)
     parser.add_argument("--memories_path", default='pretrained_models/MANTRA/memories/')
-    parser.add_argument("--withIRM", default=False, help='generate predictions with/without IRM')
+    parser.add_argument("--withIRM", default=True, help='generate predictions with/without IRM')
     parser.add_argument("--saveImages", default=None,
                         help=
                         '''
@@ -48,6 +36,3 @@ def main(config):
 if __name__ == "__main__":
     config = parse_config()
     main(config)
-
-
-

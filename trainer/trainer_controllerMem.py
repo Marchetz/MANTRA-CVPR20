@@ -33,7 +33,7 @@ class Trainer():
             os.makedirs(self.folder_test)
         self.folder_test = self.folder_test + '/'
 
-        tracks = json.load(open(config.track_file))
+        tracks = json.load(open(config.dataset_file))
         self.dim_clip = 180
         print('creating dataset...')
         self.data_train = dataset_invariance.TrackDataset(tracks,

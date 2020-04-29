@@ -4,8 +4,6 @@ import torch.nn.functional as F
 import numpy as np
 import matplotlib.pyplot as plt
 import random
-import pdb
-
 
 class model_memory_IRM(nn.Module):
     """
@@ -184,7 +182,7 @@ class model_memory_IRM(nn.Module):
         prediction = prediction.view(dim_batch, self.num_prediction, 40, 2)
         return prediction
 
-    def write_in_memory(self, past, future):
+    def write_in_memory(self, past, future, scene=None):
         """
         Writing controller decides if the pair past-future will be inserted in memory.
         :param past: past trajectory
@@ -197,7 +195,7 @@ class model_memory_IRM(nn.Module):
             num_prediction = self.num_prediction
 
         dim_batch = past.size()[0]
-        zero_padding = torch.zeros(1, dim_batch, self.dim_embedding_key * 2).cuda()
+        zero_padding = torch.zeros(1, dim_batch * num_prediction, self.dim_embedding_key * 2).cuda()
         prediction = torch.Tensor().cuda()
         present_temp = past[:, -1].unsqueeze(1)
 
@@ -209,26 +207,46 @@ class model_memory_IRM(nn.Module):
 
         # Cosine similarity and memory read
         past_normalized = F.normalize(self.memory_past, p=2, dim=1)
-        state_normalized = F.normalize(state_past.squeeze(), p=2, dim=1)
+        state_normalized = F.normalize(state_past.squeeze(0), p=2, dim=1)
         weight_read = torch.matmul(past_normalized, state_normalized.transpose(0, 1)).transpose(0, 1)
         index_max = torch.sort(weight_read, descending=True)[1].cpu()[:, :num_prediction]
 
-        for i_track in range(num_prediction):
-            present = present_temp
-            prediction_single = torch.Tensor().cuda()
-            ind = index_max[:, i_track]
-            info_future = self.memory_fut[ind]
-            info_total = torch.cat((state_past, info_future.unsqueeze(0)), 2)
-            input_dec = info_total
-            state_dec = zero_padding
-            for i in range(self.future_len):
-                output_decoder, state_dec = self.decoder(input_dec, state_dec)
-                displacement_next = self.FC_output(output_decoder)
-                coords_next = present + displacement_next.squeeze(0).unsqueeze(1)
-                prediction_single = torch.cat((prediction_single, coords_next), 1)
-                present = coords_next
-                input_dec = zero_padding
-            prediction = torch.cat((prediction, prediction_single.unsqueeze(1)), 1)
+        present = present_temp.repeat_interleave(num_prediction, dim=0)
+        state_past_repeat = state_past.repeat_interleave(num_prediction, dim=1)
+        ind = index_max.flatten()
+        info_future = self.memory_fut[ind]
+        info_total = torch.cat((state_past_repeat, info_future.unsqueeze(0)), 2)
+        input_dec = info_total
+        state_dec = zero_padding
+        for i in range(self.future_len):
+            output_decoder, state_dec = self.decoder(input_dec, state_dec)
+            displacement_next = self.FC_output(output_decoder)
+            coords_next = present + displacement_next.squeeze(0).unsqueeze(1)
+            prediction = torch.cat((prediction, coords_next), 1)
+            present = coords_next
+            input_dec = zero_padding
+
+        # Iteratively refine predictions using context
+        if scene is not None:
+            # scene encoding
+            scene = scene.permute(0, 3, 1, 2)
+            scene_1 = self.convScene_1(scene)
+            scene_2 = self.convScene_2(scene_1)
+            scene_2 = scene_2.repeat_interleave(num_prediction, dim=0)
+            for i_refine in range(4):
+                pred_map = prediction + 90
+                pred_map = pred_map.unsqueeze(2)
+                indices = pred_map.permute(0, 2, 1, 3)
+                # rescale between -1 and 1
+                indices = 2 * (indices / 180) - 1
+                output = F.grid_sample(scene_2, indices, mode='nearest')
+                output = output.squeeze(2).permute(0, 2, 1)
+
+                state_rnn = state_past_repeat
+                output_rnn, state_rnn = self.RNN_scene(output, state_rnn)
+                prediction_refine = self.fc_refine(state_rnn).view(-1, 40, 2)
+                prediction = prediction + prediction_refine
+        prediction = prediction.view(dim_batch, num_prediction, 40, 2)
 
         future_rep = future.unsqueeze(1).repeat(1, num_prediction, 1, 1)
         distances = torch.norm(prediction - future_rep, dim=3)
@@ -251,7 +269,6 @@ class model_memory_IRM(nn.Module):
 
         # ablation study: all tracks in memory
         # index_writing = np.where(writing_prob.cpu() > 0)[0]
-
         index_writing = np.where(writing_prob.cpu() > 0.5)[0]
         past_to_write = state_past.squeeze()[index_writing]
         future_to_write = state_fut.squeeze()[index_writing]

@@ -9,6 +9,7 @@ import math
 import test_remove_index
 import pdb
 
+# colormap
 colors = [(0, 0, 0), (0.87, 0.87, 0.87), (0.54, 0.54, 0.54), (0.29, 0.57, 0.25)]
 cmap_name = 'scene_list'
 cm = LinearSegmentedColormap.from_list(
@@ -26,7 +27,6 @@ class TrackDataset(data.Dataset):
         self.remove_index = test_remove_index.index    # index of examples with noise map
         self.tracks = tracks      # dataset dict
         self.dim_clip = dim_clip  # dim_clip*2 is the dimension of scene (pixel)
-        self.video_length = {}
         self.is_train = train
 
         self.video_track = []     # '0001'
@@ -42,12 +42,10 @@ class TrackDataset(data.Dataset):
 
         num_total = len_past + len_future
         self.video_split, self.ids_split_test = self.get_desire_track_files(train)
-        tot = 0
         # Preload data
         for video in self.video_split:
             vehicles = self.tracks[video].keys()
             video_id = video[-9:-5]
-            track_ego = np.array(self.tracks[video]['track_0']['trajectory']).T
             print('video: ' + video_id)
             path_scene = 'maps/2011_09_26__2011_09_26_drive_' + video_id + '_sync_map.png'
             scene_track = cv2.imread(path_scene, 0)
@@ -63,7 +61,6 @@ class TrackDataset(data.Dataset):
                 start_frame = tracks[video][vec]['start']
                 points = np.array(tracks[video][vec]['trajectory']).T
                 len_track = len(points)
-                self.video_length[video_id] = len(track_ego)
                 for count in range(0, len_track, 1):
                     if len_track - count > num_total:
                         if train == False and count + 19 + start_frame in self.remove_index[video_id][class_vec + num_vec]:
@@ -77,16 +74,11 @@ class TrackDataset(data.Dataset):
                         else:
                             temp_past = temp_past - origin
 
-                        if np.var(temp_past[:, 0]) < 0.1 and np.var(temp_past[:, 1]) < 0.1:
-                        # if np.var(temp_future[:, 0]) < 0.1 and np.var(temp_future[:, 1]) < 0.1:
-                            if train == False:
-                                tot += 1
-                                print(video_id + '_' + class_vec + num_vec + '_' + str(count + 19 + start_frame))
+                        if np.var(temp_future[:, 0]) < 0.1 and np.var(temp_future[:, 1]) < 0.1:
                             temp_future = np.zeros((40, 2))
                         else:
                             temp_future = temp_future - origin
-                        # temp_past = temp_past - origin
-                        # temp_future = temp_future - origin
+
                         scene_track_clip = scene_track[
                                            int(origin[1]) * 2 - self.dim_clip:int(origin[1]) * 2 + self.dim_clip,
                                            int(origin[0]) * 2 - self.dim_clip:int(origin[0]) * 2 + self.dim_clip]
@@ -123,9 +115,6 @@ class TrackDataset(data.Dataset):
                         self.scene.append(scene_track_clip)
                         self.scene_crop.append(scene_track_onehot_clip)
 
-        # if train ==  False:
-        #     print(tot)
-        #     pdb.set_trace()
         self.index = np.array(self.index)
         self.pasts = torch.FloatTensor(self.pasts)
         self.futures = torch.FloatTensor(self.futures)
