@@ -13,7 +13,7 @@ install required packages:
 ```bash
 pip install -r requirements.txt
 ```
-
+---
 ## Trainings
 To create a MANTRA model, 
 
@@ -49,7 +49,7 @@ The paths of a pretrained autoencoder with writing controller model and populate
 pretrained models we provided).
 A pretrained MANTRA model can be found in *pretrained_models/model_complete/*
 
-
+---
 ## Test
 ```bash
 test.py --model pretrained_complete_model_path   --withMRI True/False --memory_saved True/False
