@@ -1,23 +1,21 @@
 # CODE FOR MANTRA MODEL
+This project contains all different phases to train and evaluate MANTRA model described in CVPR paper
+"MANTRA: Memory Augmented Networks for Multiple Trajectory Prediction" 
 
-
-
+## Installation
+To install required packages: 
+```bash
+pip install -r requirements.txt
+```
 
 ## Dataset
 We provide a dataloader for the KITTI dataset in *dataset.py*. This uses *kitti_dataset.json* for the trajectories and
 the top view semantic maps which can be found in the *maps* folder.
 
 
-## Installation
-install required packages: 
-```bash
-pip install -r requirements.txt
-```
-
 ## Trainings
-To create a MANTRA model, 
-
-
+To create a MANTRA model, first it is necessary to train autoencoder, then to train writing controller and finally to train Iterative
+Refinment Module.
 Trainings can be monitored using tensorboard, logs are stored in the folder *runs/(runs-pretrain/runs-createMem/runs-IRM)*.
 In pretrained_model folder, there are pretrained models of different step (autoencoder, writing controller, MANTRA model).
 
@@ -42,7 +40,6 @@ A pretrained model (autoencoder + writing controller) can be found in *pretraine
 ```bash
 train_IRM.py --model pretrained_autoencoder+controller_model_path
 ```
-
 train_IRM.py calls trainer_IRM.py
 The script trains the IRM module that generates the final prediction based on the decoded trajectory and the context map.
 The paths of a pretrained autoencoder with writing controller model and populated memories have to be passed to the script (it defaults to the
@@ -52,12 +49,10 @@ A pretrained MANTRA model can be found in *pretrained_models/model_complete/*
 
 ## Test
 ```bash
-test.py --model pretrained_complete_model_path   --withMRI True/False --memory_saved True/False
---memory_saved: if yes, the memories (past and memory) in /pretrained_models/memory_saved/ are loaded 
+test.py --model pretrained_complete_model_path --withMRI True/False --memory_saved True/False
 ```
 test.py calls evaluate_MemNet.py
 This script generates metrics on the KITTI dataset using a trained models. We compute Average Displacement Error (ADE) and Horizon Error (Error@K).
-
 
 ### Command line arguments
 ```
@@ -70,7 +65,7 @@ This script generates metrics on the KITTI dataset using a trained models. We co
     --visualize_dataset            The system saves (in *folder_test/dataset_train* and *folder_test/dataset_test*) all examples
                                    of dataset.
     --saved_memory                 The system chooses which memories will be used in evaluation.
-                                   If True, it will be loaded memories from *memories_path* folder.
+                                   If True, it will be loaded memories from 'memories_path' folder.
                                    If False, new memories will be generated. pairs of past-future will be decided by writing controller of model.
     --memories_path                This path will be used only if saved_memory flag is True.
     --withIRM                      The model generates predictions with/without Iterative Refinement Module.
