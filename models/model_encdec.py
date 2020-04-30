@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+
 class model_encdec(nn.Module):
     """
     Encoder-Decoder model. The model reconstructs the future trajectory from an encoding of both past and future.

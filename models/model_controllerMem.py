@@ -3,8 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import random
-import matplotlib.pyplot as plt
-import pdb
 
 
 class model_controllerMem(nn.Module):
@@ -50,7 +48,7 @@ class model_controllerMem(nn.Module):
 
     def init_memory(self, data_train):
         """
-        Initialization: write element in memory.
+        Initialization: write samples in memory.
         :param data_train: dataset
         :return: None
         """
@@ -84,7 +82,7 @@ class model_controllerMem(nn.Module):
 
     def check_memory(self, index):
         """
-        method to generate a future track from past-future feature read from a index location of the memory.
+        Method to generate a future track from past-future feature read from an index location of the memory.
         :param index: index of the memory
         :return: predicted future
         """
@@ -97,7 +95,7 @@ class model_controllerMem(nn.Module):
         info_total = torch.cat((mem_past_i, mem_fut_i), 0)
         input_dec = info_total.unsqueeze(0).unsqueeze(0)
         state_dec = zero_padding
-        for i in range(40):
+        for i in range(self.future_len):
             output_decoder, state_dec = self.decoder(input_dec, state_dec)
             displacement_next = self.FC_output(output_decoder)
             coords_next = present + displacement_next.squeeze(0).unsqueeze(1)
@@ -185,7 +183,6 @@ class model_controllerMem(nn.Module):
 
         return writing_prob, tolerance_rate
 
-
     def write_in_memory(self, past, future):
         """
         Writing controller decides if the pair past-future will be inserted in memory.
@@ -193,7 +190,7 @@ class model_controllerMem(nn.Module):
         :param future: future trajectory
         """
 
-        if (self.memory_past.shape[0] < self.num_prediction):
+        if self.memory_past.shape[0] < self.num_prediction:
             num_prediction = self.memory_past.shape[0]
         else:
             num_prediction = self.num_prediction

@@ -176,10 +176,10 @@ class model_memory_IRM(nn.Module):
 
                 state_rnn = state_past
                 output_rnn, state_rnn = self.RNN_scene(output, state_rnn)
-                prediction_refine = self.fc_refine(state_rnn).view(-1, 40, 2)
+                prediction_refine = self.fc_refine(state_rnn).view(-1, self.future_len, 2)
                 prediction = prediction + prediction_refine
 
-        prediction = prediction.view(dim_batch, self.num_prediction, 40, 2)
+        prediction = prediction.view(dim_batch, self.num_prediction, self.future_len, 2)
         return prediction
 
     def write_in_memory(self, past, future, scene=None):
@@ -244,9 +244,9 @@ class model_memory_IRM(nn.Module):
 
                 state_rnn = state_past_repeat
                 output_rnn, state_rnn = self.RNN_scene(output, state_rnn)
-                prediction_refine = self.fc_refine(state_rnn).view(-1, 40, 2)
+                prediction_refine = self.fc_refine(state_rnn).view(-1, self.future_len, 2)
                 prediction = prediction + prediction_refine
-        prediction = prediction.view(dim_batch, num_prediction, 40, 2)
+        prediction = prediction.view(dim_batch, num_prediction, self.future_len, 2)
 
         future_rep = future.unsqueeze(1).repeat(1, num_prediction, 1, 1)
         distances = torch.norm(prediction - future_rep, dim=3)

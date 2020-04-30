@@ -19,10 +19,11 @@ from torchvision.transforms import ToTensor
 import time
 import tqdm
 
+
 class Trainer():
     def __init__(self, config):
         """
-        The Trainer class handles the training procedure for training the writing controller for the memory.
+        The Trainer class handles the training procedure for training the memory writing controller.
         :param config: configuration parameters (see train_controllerMem.py)
         """
 

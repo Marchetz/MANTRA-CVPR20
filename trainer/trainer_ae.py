@@ -14,7 +14,8 @@ import dataset_invariance
 from torch.autograd import Variable
 import tqdm
 
-class Trainer():
+
+class Trainer:
     def __init__(self, config):
         """
         The Trainer class handles the training procedure for training the autoencoder.
@@ -68,6 +69,7 @@ class Trainer():
 
         # model
         self.mem_n2n = model_encdec(self.settings)
+
         # loss
         self.criterionLoss = nn.MSELoss()
 

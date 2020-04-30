@@ -102,7 +102,7 @@ class TrackDataset(data.Dataset):
                         scene_track_onehot_clip = cv2.warpAffine(scene_track_onehot_clip, matRot_scene,
                                            (scene_track_onehot_clip.shape[0], scene_track_onehot_clip.shape[1]),
                                            borderValue=0,
-                                           flags=cv2.INTER_NEAREST) #(1, 0, 0, 0)
+                                           flags=cv2.INTER_NEAREST)  # (1, 0, 0, 0)
 
                         self.index.append(count + 19 + start_frame)
                         self.pasts.append(past_rot)
@@ -125,7 +125,6 @@ class TrackDataset(data.Dataset):
         self.scene = np.array(self.scene)
 
     def save_dataset(self, folder_save):
-
         for i in range(self.pasts.shape[0]):
             video = self.video_track[i]
             vehicle = self.vehicles[i]

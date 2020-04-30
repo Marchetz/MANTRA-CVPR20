@@ -63,7 +63,7 @@ class Validator():
             self.data_test.save_dataset(self.folder_test + 'dataset_test/')
             print('Saving complete!')
 
-        #load model to evaluate
+        # load model to evaluate
         self.mem_n2n = torch.load(config.model)
         self.mem_n2n.num_prediction = config.preds
         self.mem_n2n.future_len = config.future_len
@@ -189,7 +189,6 @@ class Validator():
 
                 future_rep = future.unsqueeze(1).repeat(1, self.config.preds, 1, 1)
                 distances = torch.norm(pred - future_rep, dim=3)
-                #pdb.set_trace()
                 mean_distances = torch.mean(distances, dim=2)
                 index_min = torch.argmin(mean_distances, dim=1)
                 distance_pred = distances[torch.arange(0, len(index_min)), index_min]
@@ -271,143 +270,3 @@ class Validator():
                 # save memory
                 torch.save(self.mem_n2n.memory_past, self.folder_test + 'memory_past.pt')
                 torch.save(self.mem_n2n.memory_fut, self.folder_test + 'memory_fut.pt')
-
-    def evaluate_slim(self, loader):
-        """
-        Evaluate model. Future trajectories are predicted and
-        :param loader: data loader for testing data
-        :param epoch: epoch index (default: 0)
-        :return: dictionary of performance metrics
-        """
-
-        self.mem_n2n.eval()
-
-        videos_json = {}
-        test_ids = self.data_test.ids_split_test
-        for ids in test_ids:
-            videos_json['video_' + str(ids).zfill(4)] = {}
-            for i_temp in range(self.data_test.video_length[str(ids).zfill(4)]):
-                videos_json['video_' + str(ids).zfill(4)]['frame_' + str(i_temp).zfill(3)] = {}
-
-        with torch.no_grad():
-            dict_metrics = {}
-            eucl_mean = ADE_1s = ADE_2s = ADE_3s = horizon10s = horizon20s = horizon30s = horizon40s = 0
-            list_err1 = []
-            list_err2 = []
-            list_err3 = []
-            list_err4 = []
-
-            for step, (index, past, future, presents, angle_presents, videos, vehicles, number_vec, scene, scene_one_hot) \
-                    in enumerate(tqdm.tqdm(loader)):
-                past = Variable(past)
-                future = Variable(future)
-                if self.config.cuda:
-                    past = past.cuda()
-                    future = future.cuda()
-                if self.config.withIRM:
-                    scene_one_hot = Variable(scene_one_hot)
-                    scene_one_hot = scene_one_hot.cuda()
-                    pred = self.mem_n2n(past, scene_one_hot)
-                else:
-                    pred = self.mem_n2n(past)
-
-                for i in range(len(past)):
-                    list_error_single_pred_mean = []
-                    list_error_single_pred_1s = []
-                    list_error_single_pred_2s = []
-                    list_error_single_pred_3s = []
-                    list_error_single_pred_4s = []
-                    for i_multiple in range(len(pred[i])):
-                        pred_one = pred[i][i_multiple]
-                        dist = self.EuclDistance(pred_one, future[i, :])
-                        list_error_single_pred_mean.append(round(torch.mean(dist).item(),3))
-                        list_error_single_pred_1s.append(round(dist[9].item(), 3))
-                        list_error_single_pred_2s.append(round(dist[19].item(), 3))
-                        list_error_single_pred_3s.append(round(dist[29].item(), 3))
-                        list_error_single_pred_4s.append(round(dist[39].item(), 3))
-                    # i_min = np.argmin(list_error_single_pred_mean)
-                    i_min = np.argmin(list_error_single_pred_4s)
-
-
-                    dist = self.EuclDistance(pred[i][i_min], future[i, :])
-                    he_1s = round(dist[9].item(), 3)
-                    he_2s = round(dist[19].item(), 3)
-                    he_3s = round(dist[29].item(), 3)
-                    he_4s = round(dist[39].item(), 3)
-                    eucl_mean += round(torch.mean(dist).item(), 3)
-                    ADE_1s += round(torch.mean(dist[:10]).item(), 3)
-                    ADE_2s += round(torch.mean(dist[:20]).item(), 3)
-                    ADE_3s += round(torch.mean(dist[:30]).item(), 3)
-                    list_err1.append(he_1s)
-                    list_err2.append(he_2s)
-                    list_err3.append(he_3s)
-                    list_err4.append(he_4s)
-                    horizon10s += he_1s
-                    horizon20s += he_2s
-                    horizon30s += he_3s
-                    horizon40s += he_4s
-
-            dict_metrics['eucl_mean'] = eucl_mean / len(loader.dataset)
-            dict_metrics['ADE_1s'] = ADE_1s / len(loader.dataset)
-            dict_metrics['ADE_2s'] = ADE_2s / len(loader.dataset)
-            dict_metrics['ADE_3s'] = ADE_3s / len(loader.dataset)
-            dict_metrics['horizon10s'] = horizon10s / len(loader.dataset)
-            dict_metrics['horizon20s'] = horizon20s / len(loader.dataset)
-            dict_metrics['horizon30s'] = horizon30s / len(loader.dataset)
-            dict_metrics['horizon40s'] = horizon40s / len(loader.dataset)
-
-        return dict_metrics
-
-
-    def load(self, directory):
-        pass
-
-    def evaluate_incremental(self):
-
-        test_loader = DataLoader(self.data_test,
-                                      batch_size=256,
-                                      num_workers=8,
-                                      shuffle=False
-                                      )
-        mem_sizes = []
-        incremental_results = []
-        self.mem_n2n.memory_count = torch.Tensor().cuda()
-        self.mem_n2n.num_prediction = 0
-        self.mem_n2n.init_memory(self.data_train)
-        self.mem_n2n.num_prediction = 1
-        res = self.evaluate_slim(test_loader)
-        incremental_results.append(res)
-        with torch.no_grad():
-            for epoch in range(10):
-                for step, (index, past, future, _, _, _, _, _, _, scene_one_hot) in enumerate(tqdm.tqdm(self.train_loader)):
-                    mem_size = self.mem_n2n.memory_past.shape[0]
-                    print('mem_size {}'.format(mem_size))
-                    if mem_size <= self.config.preds:
-                        self.mem_n2n.num_prediction = mem_size
-                    past = Variable(past)
-                    future = Variable(future)
-                    # scene_one_hot = Variable(scene_one_hot)
-                    if self.config.cuda:
-                        past = past.cuda()
-                        future = future.cuda()
-                        # scene_one_hot = scene_one_hot.cuda()
-
-                    self.mem_n2n.write_in_memory(past, future)
-                    print(self.mem_n2n.memory_past.shape[0])
-                    mem_sizes.append(self.mem_n2n.memory_past.shape[0])
-                    if self.mem_n2n.memory_past.shape[0] == mem_size:
-                        incremental_results.append(res)
-                    else:
-                        res = self.evaluate_slim(test_loader)
-                        incremental_results.append(res)
-                np.savez('incremental_results{}.npz'.format(epoch), incremental_results, mem_sizes)
-                plt.plot(mem_sizes)
-                plt.show()
-                plt.plot([x['horizon40s'] for x in incremental_results])
-                plt.show()
-
-
-            # # save memory
-            # torch.save(self.mem_n2n.memory_past, self.folder_test + 'memory_past.pt')
-            # torch.save(self.mem_n2n.memory_fut, self.folder_test + 'memory_fut.pt')
-
