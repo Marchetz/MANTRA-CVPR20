@@ -67,8 +67,18 @@ class TrackDataset(data.Dataset):
                         temp_past = points[count:count + len_past].copy()
                         temp_future = points[count + len_past:count + num_total].copy()
                         origin = temp_past[-1]
-                        temp_past = temp_past - origin
-                        temp_future = temp_future - origin
+
+                        # filter out noise for non-moving vehicles
+                        if np.var(temp_past[:, 0]) < 0.1 and np.var(temp_past[:, 1]) < 0.1:
+                            temp_past = np.zeros((20, 2))
+                        else:
+                            temp_past = temp_past - origin
+
+                        if np.var(temp_past[:, 0]) < 0.1 and np.var(temp_past[:, 1]) < 0.1:
+                            temp_future = np.zeros((40, 2))
+                        else:
+                            temp_future = temp_future - origin
+
                         scene_track_clip = scene_track[
                                            int(origin[1]) * 2 - self.dim_clip:int(origin[1]) * 2 + self.dim_clip,
                                            int(origin[0]) * 2 - self.dim_clip:int(origin[0]) * 2 + self.dim_clip]
