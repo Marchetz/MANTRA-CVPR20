@@ -251,12 +251,11 @@ class Trainer():
         Plot past and future trajectory and save it to tensorboard.
         :param past: the observed trajectory
         :param future: ground truth future trajectory
+        :param scene: the observed scene where is the trajectory
         :param pred: predicted future trajectory
         :param angle: rotation angle to plot the trajectory in the original direction
         :param video_id: video index of the trajectory
         :param vec_id: vehicle type of the trajectory
-        :param pred: predicted future trajectory
-        :param: the observed scene where is the trajectory
         :param index_tracklet: index of the trajectory in the dataset (default 0)
         :param num_epoch: current epoch (default 0)
         :return: None

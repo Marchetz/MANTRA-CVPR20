@@ -18,7 +18,7 @@ def parse_config():
     parser.add_argument("--model", default='pretrained_models/model_controller/model_controller')
 
     parser.add_argument("--saved_memory", default=True)
-    parser.add_argument("--saveImages", default=True)
+    parser.add_argument("--saveImages", default=True, help="plot qualitative examples in tensorboard")
     parser.add_argument("--dataset_file", default="kitti_dataset.json", help="dataset file")
     parser.add_argument("--info", type=str, default='', help='Name of training. '
                                                              'It will use in tensorboard log and test folder')

@@ -184,11 +184,13 @@ class Trainer:
             for name, param in self.mem_n2n.named_parameters():
                 self.writer.add_histogram(name, param.data, epoch)
 
+        # Save final trained model
+        torch.save(self.mem_n2n, self.folder_test + 'model_mantra_' + self.name_test)
+
     def save_results(self, dict_metrics_test, epoch=0):
         """
         Serialize results
         :param dict_metrics_test: dictionary with test metrics
-        :param dict_metrics_train: dictionary with train metrics
         :param epoch: epoch index (default: 0)
         :return: None
         """
@@ -210,14 +212,27 @@ class Trainer:
 
         self.file.close()
 
-    def draw_track(self, past, future, scene_track, pred=None, angle=0, video_id='', vec_id='', index_tracklet=0,
-                   num_epoch=0, horizon_dist=None):
+    def draw_track(self, past, future, scene, pred=None, angle=0, video_id='', vec_id='', index_tracklet=0,
+                   num_epoch=0):
+        """
+        Plot past and future trajectory and save it to tensorboard.
+        :param past: the observed trajectory
+        :param future: ground truth future trajectory
+        :param scene: the observed scene where is the trajectory
+        :param pred: predicted future trajectory
+        :param angle: rotation angle to plot the trajectory in the original direction
+        :param video_id: video index of the trajectory
+        :param vec_id: vehicle type of the trajectory
+        :param index_tracklet: index of the trajectory in the dataset (default 0)
+        :param num_epoch: current epoch (default 0)
+        :return: None
+        """
 
         colors = [(0, 0, 0), (0.87, 0.87, 0.87), (0.54, 0.54, 0.54), (0.49, 0.33, 0.16), (0.29, 0.57, 0.25)]
         cmap_name = 'scene_cmap'
         cm = LinearSegmentedColormap.from_list(cmap_name, colors, N=5)
         fig = plt.figure()
-        plt.imshow(scene_track, cmap=cm)
+        plt.imshow(scene, cmap=cm)
         colors = pl.cm.Reds(np.linspace(1, 0.3, pred.shape[0]))
         matRot_track = cv2.getRotationMatrix2D((0, 0), -angle, 1)
         past = cv2.transform(past.cpu().numpy().reshape(-1, 1, 2), matRot_track).squeeze()
@@ -233,9 +248,6 @@ class Trainer:
                          markersize=0.5)
         plt.plot(future_scene[:, 0], future_scene[:, 1], c='green', linewidth=1, marker='o', markersize=1)
         plt.axis('equal')
-        if horizon_dist is not None:
-            plt.title('HE 1s: ' + str(horizon_dist[0]) + ' HE 2s: ' + str(horizon_dist[2]) + ' HE 3s: ' + str(
-                horizon_dist[2]) + ' HE 4s: ' + str(horizon_dist[3]))
 
         # Save figure in Tensorboard
         buf = io.BytesIO()
