@@ -6,7 +6,6 @@ import os
 from matplotlib.colors import LinearSegmentedColormap
 import cv2
 import math
-import test_remove_index
 import pdb
 
 # colormap
@@ -24,7 +23,6 @@ class TrackDataset(data.Dataset):
     """
     def __init__(self, tracks, len_past=20, len_future=40, train=False, dim_clip=180):
 
-        self.remove_index = test_remove_index.index    # index of examples with noise map
         self.tracks = tracks      # dataset dict
         self.dim_clip = dim_clip  # dim_clip*2 is the dimension of scene (pixel)
         self.is_train = train
@@ -42,6 +40,7 @@ class TrackDataset(data.Dataset):
 
         num_total = len_past + len_future
         self.video_split, self.ids_split_test = self.get_desire_track_files(train)
+
         # Preload data
         for video in self.video_split:
             vehicles = self.tracks[video].keys()
@@ -56,6 +55,7 @@ class TrackDataset(data.Dataset):
             scene_track_onehot[np.where(scene_track_onehot == 4)] -= 1
 
             for vec in vehicles:
+
                 class_vec = tracks[video][vec]['cls']
                 num_vec = vec.split('_')[1]
                 start_frame = tracks[video][vec]['start']
@@ -63,22 +63,12 @@ class TrackDataset(data.Dataset):
                 len_track = len(points)
                 for count in range(0, len_track, 1):
                     if len_track - count > num_total:
-                        if train == False and count + 19 + start_frame in self.remove_index[video_id][class_vec + num_vec]:
-                            continue
+
                         temp_past = points[count:count + len_past].copy()
                         temp_future = points[count + len_past:count + num_total].copy()
-
                         origin = temp_past[-1]
-                        if np.var(temp_past[:, 0]) < 0.1 and np.var(temp_past[:, 1]) < 0.1:
-                            temp_past = np.zeros((20, 2))
-                        else:
-                            temp_past = temp_past - origin
-
-                        if np.var(temp_future[:, 0]) < 0.1 and np.var(temp_future[:, 1]) < 0.1:
-                            temp_future = np.zeros((40, 2))
-                        else:
-                            temp_future = temp_future - origin
-
+                        temp_past = temp_past - origin
+                        temp_future = temp_future - origin
                         scene_track_clip = scene_track[
                                            int(origin[1]) * 2 - self.dim_clip:int(origin[1]) * 2 + self.dim_clip,
                                            int(origin[0]) * 2 - self.dim_clip:int(origin[0]) * 2 + self.dim_clip]

@@ -80,8 +80,8 @@ class Trainer:
         self.max_epochs = config.max_epochs
 
         # load pretrained model and create memory_model
-        self.model = torch.load(config.model)
-        self.mem_n2n = model_memory_IRM(self.settings, self.model)
+        self.mem_n2n = torch.load(config.model)
+        #self.mem_n2n = model_memory_IRM(self.settings, self.model)
         self.mem_n2n.past_len = config.past_len
         self.mem_n2n.future_len = config.future_len
 
@@ -138,8 +138,16 @@ class Trainer:
         for param in self.mem_n2n.linear_controller.parameters():
             param.requires_grad = False
         for param in self.mem_n2n.decoder.parameters():
-            param.requires_grad = True
+            param.requires_grad = False
         for param in self.mem_n2n.FC_output.parameters():
+            param.requires_grad = False
+        for param in self.mem_n2n.convScene_1.parameters():
+            param.requires_grad = True
+        for param in self.mem_n2n.convScene_2.parameters():
+            param.requires_grad = True
+        for param in self.mem_n2n.RNN_scene.parameters():
+            param.requires_grad = True
+        for param in self.mem_n2n.fc_refine.parameters():
             param.requires_grad = True
 
         # Load memory

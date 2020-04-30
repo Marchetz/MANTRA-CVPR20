@@ -15,7 +15,7 @@ from torch.autograd import Variable
 import csv
 import time
 import tqdm
-from models.model_decoder import model_decoder
+import pdb
 
 
 class Validator():
@@ -30,11 +30,13 @@ class Validator():
         if not os.path.exists(self.folder_test):
             os.makedirs(self.folder_test)
         self.folder_test = self.folder_test + '/'
-        tracks = json.load(open(config.dataset_file))
 
-        self.dim_clip = 180
         print('creating dataset...')
+        self.dim_clip = 180
+        tracks = json.load(open(config.dataset_file))
         self.data_train = dataset_invariance.TrackDataset(tracks,
+                                                          len_past=config.past_len,
+                                                          len_future=config.future_len,
                                                           train=True,
                                                           dim_clip=self.dim_clip)
 
@@ -44,6 +46,8 @@ class Validator():
                                        shuffle=True)
 
         self.data_test = dataset_invariance.TrackDataset(tracks,
+                                                         len_past=config.past_len,
+                                                         len_future=config.future_len,
                                                          train=False,
                                                          dim_clip=self.dim_clip)
 
@@ -51,11 +55,13 @@ class Validator():
                                       batch_size=config.batch_size,
                                       num_workers=1,
                                       shuffle=False)
+
         print('dataset created')
         if config.visualize_dataset:
             print('save examples in folder test')
             self.data_train.save_dataset(self.folder_test + 'dataset_train/')
             self.data_test.save_dataset(self.folder_test + 'dataset_test/')
+            print('Saving complete!')
 
         #load model to evaluate
         self.mem_n2n = torch.load(config.model)
@@ -64,7 +70,6 @@ class Validator():
         self.mem_n2n.past_len = config.past_len
 
         self.EuclDistance = nn.PairwiseDistance(p=2)
-        self.iterations = 0
         if config.cuda:
             self.mem_n2n = self.mem_n2n.cuda()
         self.start_epoch = 0
@@ -72,6 +77,7 @@ class Validator():
 
     def test_model(self):
         """
+        Memory selection and evaluation!
         :return: None
         """
         # populate the memory
@@ -102,19 +108,33 @@ class Validator():
         self.file.write("TRAIN size: " + str(len(self.data_train)) + '\n')
         self.file.write("TEST size: " + str(len(self.data_test)) + '\n')
 
-        self.file.write("error 1s: " + str(dict_metrics_test['horizon10s']) + '\n')
-        self.file.write("error 2s: " + str(dict_metrics_test['horizon20s']) + '\n')
-        self.file.write("error 3s: " + str(dict_metrics_test['horizon30s']) + '\n')
-        self.file.write("error 4s: " + str(dict_metrics_test['horizon40s']) + '\n')
-        self.file.write("ADE 1s: " + str(dict_metrics_test['ADE_1s']) + '\n')
-        self.file.write("ADE 2s: " + str(dict_metrics_test['ADE_2s']) + '\n')
-        self.file.write("ADE 3s: " + str(dict_metrics_test['ADE_3s']) + '\n')
-        self.file.write("ADE 4s: " + str(dict_metrics_test['eucl_mean']) + '\n')
+        self.file.write("error 1s: " + str(dict_metrics_test['horizon10s']) + 'm \n')
+        self.file.write("error 2s: " + str(dict_metrics_test['horizon20s']) + 'm \n')
+        self.file.write("error 3s: " + str(dict_metrics_test['horizon30s']) + 'm \n')
+        self.file.write("error 4s: " + str(dict_metrics_test['horizon40s']) + 'm \n')
+        self.file.write("ADE 1s: " + str(dict_metrics_test['ADE_1s']) + 'm \n')
+        self.file.write("ADE 2s: " + str(dict_metrics_test['ADE_2s']) + 'm \n')
+        self.file.write("ADE 3s: " + str(dict_metrics_test['ADE_3s']) + 'm \n')
+        self.file.write("ADE 4s: " + str(dict_metrics_test['eucl_mean']) + 'm \n')
 
         self.file.close()
 
     def draw_track(self, past, future, scene_track, pred=None, angle=0, video_id='', vec_id='', index_tracklet=0,
-                   save_fig=False, path='', horizon_dist=None):
+                    path='', horizon_dist=None):
+        """
+        Plot past and future trajectory and save it to test folder.
+        :param past: the observed trajectory
+        :param future: ground truth future trajectory
+        :param pred: predicted future trajectory
+        :param angle: rotation angle to plot the trajectory in the original direction
+        :param video_id: video index of the trajectory
+        :param vec_id: vehicle type of the trajectory
+        :param pred: predicted future trajectory
+        :param: the observed scene where is the trajectory
+        :param index_tracklet: index of the trajectory in the dataset (default 0)
+        :param num_epoch: current epoch (default 0)
+        :return: None
+        """
 
         colors = [(0, 0, 0), (0.87, 0.87, 0.87), (0.54, 0.54, 0.54), (0.49, 0.33, 0.16), (0.29, 0.57, 0.25)]
         cmap_name = 'scene_cmap'
@@ -138,11 +158,8 @@ class Validator():
         plt.title('FDE 1s: ' + str(horizon_dist[0]) + ' FDE 2s: ' + str(horizon_dist[1]) + ' FDE 3s: ' +
                   str(horizon_dist[2]) + ' FDE 4s: ' + str(horizon_dist[3]))
         plt.axis('equal')
-
-        if save_fig:
-            plt.savefig(path + video_id + '_' + vec_id + '_' + str(index_tracklet).zfill(3) + '.png')
+        plt.savefig(path + video_id + '_' + vec_id + '_' + str(index_tracklet).zfill(3) + '.png')
         plt.close(fig)
-
 
     def evaluate(self, loader):
         """
@@ -172,6 +189,7 @@ class Validator():
 
                 future_rep = future.unsqueeze(1).repeat(1, self.config.preds, 1, 1)
                 distances = torch.norm(pred - future_rep, dim=3)
+                #pdb.set_trace()
                 mean_distances = torch.mean(distances, dim=2)
                 index_min = torch.argmin(mean_distances, dim=1)
                 distance_pred = distances[torch.arange(0, len(index_min)), index_min]
@@ -203,8 +221,7 @@ class Validator():
                                 os.makedirs(video_path + vec + num_vec)
                             vehicle_path = video_path + vec + num_vec + '/'
                             self.draw_track(past[i], future[i], scene[i], pred[i], angle, vid, vec + num_vec,
-                                            index_tracklet=index_track, save_fig=True,
-                                            path=vehicle_path, horizon_dist=horizon_dist)
+                                            index_tracklet=index_track, path=vehicle_path, horizon_dist=horizon_dist)
                         if self.config.saveImages == 'Subset':
                             if index_track.item() in self.index_qualitative[vid][vec + num_vec]:
                                 # Save interesting results
@@ -212,17 +229,16 @@ class Validator():
                                     os.makedirs(self.folder_test + 'highlights')
                                 highlights_path = self.folder_test + 'highlights' + '/'
                                 self.draw_track(past[i], future[i], scene[i], pred[i], angle, vid, vec + num_vec,
-                                                index_tracklet=index_track, save_fig=True,
-                                                path=highlights_path, horizon_dist=horizon_dist)
+                                                index_tracklet=index_track, path=highlights_path, horizon_dist=horizon_dist)
 
-            dict_metrics['eucl_mean'] = eucl_mean / len(loader.dataset)
-            dict_metrics['ADE_1s'] = ADE_1s / len(loader.dataset)
-            dict_metrics['ADE_2s'] = ADE_2s / len(loader.dataset)
-            dict_metrics['ADE_3s'] = ADE_3s / len(loader.dataset)
-            dict_metrics['horizon10s'] = horizon10s / len(loader.dataset)
-            dict_metrics['horizon20s'] = horizon20s / len(loader.dataset)
-            dict_metrics['horizon30s'] = horizon30s / len(loader.dataset)
-            dict_metrics['horizon40s'] = horizon40s / len(loader.dataset)
+            dict_metrics['eucl_mean'] = round((eucl_mean / len(loader.dataset)).item(), 3)
+            dict_metrics['ADE_1s'] = round((ADE_1s / len(loader.dataset)).item(), 3)
+            dict_metrics['ADE_2s'] = round((ADE_2s / len(loader.dataset)).item(), 3)
+            dict_metrics['ADE_3s'] = round((ADE_3s / len(loader.dataset)).item(), 3)
+            dict_metrics['horizon10s'] = round((horizon10s / len(loader.dataset)).item(), 3)
+            dict_metrics['horizon20s'] = round((horizon20s / len(loader.dataset)).item(), 3)
+            dict_metrics['horizon30s'] = round((horizon30s / len(loader.dataset)).item(), 3)
+            dict_metrics['horizon40s'] = round((horizon40s / len(loader.dataset)).item(), 3)
 
         return dict_metrics
 
@@ -233,15 +249,13 @@ class Validator():
         """
 
         if saved_memory:
-            # self.mem_n2n.memory_past = torch.load(self.config.memories_path + 'memory_past.pt')
-            # self.mem_n2n.memory_fut = torch.load(self.config.memories_path + 'memory_fut.pt')
-            print('ok memory')
+            self.mem_n2n.memory_past = torch.load(self.config.memories_path + 'memory_past.pt')
+            self.mem_n2n.memory_fut = torch.load(self.config.memories_path + 'memory_fut.pt')
         else:
             self.mem_n2n.init_memory(self.data_train)
             config = self.config
             with torch.no_grad():
                 for step, (index, past, future, _, _, _, _, _, _, scene_one_hot) in enumerate(tqdm.tqdm(self.train_loader)):
-                    self.iterations += 1
                     past = Variable(past)
                     future = Variable(future)
                     if config.cuda:
@@ -370,7 +384,6 @@ class Validator():
                     print('mem_size {}'.format(mem_size))
                     if mem_size <= self.config.preds:
                         self.mem_n2n.num_prediction = mem_size
-                    self.iterations += 1
                     past = Variable(past)
                     future = Variable(future)
                     # scene_one_hot = Variable(scene_one_hot)

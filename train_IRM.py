@@ -15,7 +15,9 @@ def parse_config():
     parser.add_argument("--dim_embedding_key", type=int, default=48)
 
     # MODEL CONTROLLER
-    parser.add_argument("--model", default='pretrained_models/model_controller/model_controller')
+    #parser.add_argument("--model", default='pretrained_models/model_controller/model_controller')
+    parser.add_argument("--model", default='pretrained_models/MANTRA/model_MANTRA')
+    parser.add_argument("--memories_path", default='pretrained_models/MANTRA/memories/')
 
     parser.add_argument("--saved_memory", default=True)
     parser.add_argument("--saveImages", default=True, help="plot qualitative examples in tensorboard")
