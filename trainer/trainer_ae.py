@@ -24,7 +24,7 @@ class Trainer():
         # test folder creating
         self.name_test = str(datetime.datetime.now())[:13]
         self.folder_tensorboard = 'runs/runs-ae/'
-        self.folder_test = 'test/' + self.name_test + '_' + config.info
+        self.folder_test = 'training/training_ae/' + self.name_test + '_' + config.info
         if not os.path.exists(self.folder_test):
             os.makedirs(self.folder_test)
         self.folder_test = self.folder_test + '/'

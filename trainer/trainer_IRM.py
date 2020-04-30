@@ -32,7 +32,7 @@ class Trainer:
         self.index_qualitative = index_qualitative.dict_test
         self.name_run = 'runs/runs-IRM/'
         self.name_test = str(datetime.datetime.now())[:19]
-        self.folder_test = 'test/test_IRM/' + self.name_test + '_' + config.info
+        self.folder_test = 'training/training_IRM/' + self.name_test + '_' + config.info
         if not os.path.exists(self.folder_test):
             os.makedirs(self.folder_test)
         self.folder_test = self.folder_test + '/'
