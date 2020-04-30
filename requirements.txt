@@ -1,3 +1,4 @@
+wheel
 tqdm==4.42.0
 scipy==1.4.0
 opencv_python==4.1.2.30
