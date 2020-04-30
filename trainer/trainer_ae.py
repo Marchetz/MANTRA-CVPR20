@@ -21,6 +21,7 @@ class Trainer():
         :param config: configuration parameters (see train_ae.py)
         """
 
+        # test folder creating
         self.name_test = str(datetime.datetime.now())[:13]
         self.folder_tensorboard = 'runs/runs-ae/'
         self.folder_test = 'test/' + self.name_test + '_' + config.info
@@ -28,27 +29,25 @@ class Trainer():
             os.makedirs(self.folder_test)
         self.folder_test = self.folder_test + '/'
         self.file = open(self.folder_test + "details.txt", "w")
-        tracks = json.load(open(config.dataset_file))
 
-        self.dim_clip = 180
         print('Creating dataset...')
+        tracks = json.load(open(config.dataset_file))
+        self.dim_clip = 180
         self.data_train = dataset_invariance.TrackDataset(tracks,
-                                               len_past=config.past_len,
-                                               len_future=config.future_len,
-                                               train=True,
-                                               dim_clip=self.dim_clip
-                                               )
+                                                          len_past=config.past_len,
+                                                          len_future=config.future_len,
+                                                          train=True,
+                                                          dim_clip=self.dim_clip)
         self.train_loader = DataLoader(self.data_train,
                                        batch_size=config.batch_size,
                                        num_workers=1,
                                        shuffle=True
                                        )
         self.data_test = dataset_invariance.TrackDataset(tracks,
-                                              len_past=config.past_len,
-                                              len_future=config.future_len,
-                                              train=False,
-                                              dim_clip=self.dim_clip
-                                              )
+                                                         len_past=config.past_len,
+                                                         len_future=config.future_len,
+                                                         train=False,
+                                                         dim_clip=self.dim_clip)
         self.test_loader = DataLoader(self.data_test,
                                       batch_size=config.batch_size,
                                       num_workers=1,
@@ -73,7 +72,6 @@ class Trainer():
         self.criterionLoss = nn.MSELoss()
 
         self.opt = torch.optim.Adam(self.mem_n2n.parameters(), lr=config.learning_rate)
-        self.scheduler = torch.optim.lr_scheduler.ExponentialLR(self.opt, 0.5)
         self.iterations = 0
         if config.cuda:
             self.criterionLoss = self.criterionLoss.cuda()
@@ -104,6 +102,7 @@ class Trainer():
         self.file.write('train size: {}'.format(len(self.data_train)) + '\n')
         self.file.write('test size: {}'.format(len(self.data_test)) + '\n')
         self.file.write('batch size: {}'.format(self.config.batch_size) + '\n')
+        self.file.write('learning rate: {}'.format(self.config.learning_rate) + '\n')
         self.file.write('embedding dim: {}'.format(self.config.dim_embedding_key) + '\n')
 
     def draw_track(self, past, future, pred=None, index_tracklet=0, num_epoch=0, train=False):
@@ -183,7 +182,7 @@ class Trainer():
                 # Save model checkpoint
                 torch.save(self.mem_n2n, self.folder_test + 'model_ae_epoch_' + str(epoch) + '_' + self.name_test)
 
-                # Tensorboard summary: weights
+                # Tensorboard summary: model weights
                 for name, param in self.mem_n2n.named_parameters():
                     self.writer.add_histogram(name, param.data, epoch)
 
@@ -255,7 +254,6 @@ class Trainer():
             # Get prediction and compute loss
             output = self.mem_n2n(past, future)
             loss = self.criterionLoss(output, future)
-
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.mem_n2n.parameters(), 1.0, norm_type=2)
             self.opt.step()

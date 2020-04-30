@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import pdb
 
 class model_encdec(nn.Module):
     """
@@ -13,7 +12,7 @@ class model_encdec(nn.Module):
     def __init__(self, settings):
         super(model_encdec, self).__init__()
 
-        self.name_model = 'pre_train'
+        self.name_model = 'autoencoder'
         self.use_cuda = settings["use_cuda"]
         self.dim_embedding_key = settings["dim_embedding_key"]
         self.past_len = settings["past_len"]
@@ -32,6 +31,8 @@ class model_encdec(nn.Module):
         self.encoder_fut = nn.GRU(input_gru, self.dim_embedding_key, 1, batch_first=True)
         self.decoder = nn.GRU(self.dim_embedding_key * 2, self.dim_embedding_key * 2, 1, batch_first=False)
         self.FC_output = torch.nn.Linear(self.dim_embedding_key * 2, 2)
+
+        # activation function
         self.relu = nn.ReLU()
 
         # weight initialization: kaiming
@@ -67,9 +68,12 @@ class model_encdec(nn.Module):
         """
 
         dim_batch = past.size()[0]
-        zero_padding = torch.zeros(1, dim_batch, self.dim_embedding_key * 2).cuda()
-        prediction = torch.Tensor().cuda()
+        zero_padding = torch.zeros(1, dim_batch, self.dim_embedding_key * 2)
+        prediction = torch.Tensor()
         present = past[:, -1, :2].unsqueeze(1)
+        if self.use_cuda:
+            zero_padding = zero_padding.cuda()
+            prediction = prediction.cuda()
 
         # temporal encoding for past
         past = torch.transpose(past, 1, 2)
@@ -85,7 +89,7 @@ class model_encdec(nn.Module):
         output_past, state_past = self.encoder_past(past_embed)
         output_fut, state_fut = self.encoder_fut(future_embed)
 
-        # concatenate
+        # state concatenation and decoding
         state_conc = torch.cat((state_past, state_fut), 2)
         input_fut = state_conc
         state_fut = zero_padding

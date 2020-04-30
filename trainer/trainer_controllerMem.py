@@ -32,10 +32,11 @@ class Trainer():
         if not os.path.exists(self.folder_test):
             os.makedirs(self.folder_test)
         self.folder_test = self.folder_test + '/'
+        self.file = open(self.folder_test + "details.txt", "w")
 
+        print('creating dataset...')
         tracks = json.load(open(config.dataset_file))
         self.dim_clip = 180
-        print('creating dataset...')
         self.data_train = dataset_invariance.TrackDataset(tracks,
                                                           len_past=config.past_len,
                                                           len_future=config.future_len,
@@ -85,6 +86,10 @@ class Trainer():
         self.start_epoch = 0
         self.config = config
 
+        # Write details to file
+        self.write_details()
+        self.file.close()
+
         # Tensorboard summary: configuration
         self.writer = SummaryWriter(self.folder_tensorboard + self.name_test + '_' + config.info)
         self.writer.add_text('Training Configuration', 'model name: {}'.format(self.mem_n2n.name_model), 0)
@@ -93,6 +98,19 @@ class Trainer():
         self.writer.add_text('Training Configuration', 'batch_size: {}'.format(self.config.batch_size), 0)
         self.writer.add_text('Training Configuration', 'learning rate init: {}'.format(self.config.learning_rate), 0)
         self.writer.add_text('Training Configuration', 'dim_embedding_key: {}'.format(self.config.dim_embedding_key), 0)
+
+    def write_details(self):
+        """
+        Serialize configuration parameters to file.
+        """
+
+        self.file.write('points of past track: {}'.format(self.config.past_len) + '\n')
+        self.file.write('points of future track: {}'.format(self.config.future_len) + '\n')
+        self.file.write('train size: {}'.format(len(self.data_train)) + '\n')
+        self.file.write('test size: {}'.format(len(self.data_test)) + '\n')
+        self.file.write('batch size: {}'.format(self.config.batch_size) + '\n')
+        self.file.write('learning rate: {}'.format(self.config.learning_rate) + '\n')
+        self.file.write('embedding dim: {}'.format(self.config.dim_embedding_key) + '\n')
 
     def fit(self):
         """
@@ -117,7 +135,7 @@ class Trainer():
 
         # Memory Initialization
         self.mem_n2n.init_memory(self.data_train)
-        self.save_plot_weight(0)
+        self.save_plot_controller(0)
 
         # Main training loop
         for epoch in range(self.start_epoch, config.max_epochs):
@@ -128,8 +146,7 @@ class Trainer():
             loss = self._train_single_epoch()
             end = time.time()
             print('Epoch took: {} Loss: {}'.format(end - start, loss))
-            self.writer.add_scalar('memory_size/memory_size_train', len(self.mem_n2n.memory_past), epoch)
-            self.save_plot_weight(epoch)
+            self.save_plot_controller(epoch)
 
             if (epoch + 1) % 20 == 0:
                 # Test model while training
@@ -172,7 +189,12 @@ class Trainer():
         # Save final trained model
         torch.save(self.mem_n2n, self.folder_test + 'model_controller_' + self.name_test)
 
-    def save_plot_weight(self, epoch):
+    def save_plot_controller(self, epoch):
+        """
+        plot the learned threshold bt writing controller
+        :param epoch: epoch index (default: 0)
+        :return: None
+        """
 
         fig = plt.figure()
         x = torch.Tensor(np.linspace(0, 1, 100))
@@ -224,14 +246,28 @@ class Trainer():
 
         self.file.close()
 
-    def draw_track(self, past, future, scene_track, pred=None, angle=0, video_id='', vec_id='', index_tracklet=0, num_epoch=0):
+    def draw_track(self, past, future, scene, pred=None, angle=0, video_id='', vec_id='', index_tracklet=0, num_epoch=0):
+        """
+        Plot past and future trajectory and save it to tensorboard.
+        :param past: the observed trajectory
+        :param future: ground truth future trajectory
+        :param pred: predicted future trajectory
+        :param angle: rotation angle to plot the trajectory in the original direction
+        :param video_id: video index of the trajectory
+        :param vec_id: vehicle type of the trajectory
+        :param pred: predicted future trajectory
+        :param: the observed scene where is the trajectory
+        :param index_tracklet: index of the trajectory in the dataset (default 0)
+        :param num_epoch: current epoch (default 0)
+        :return: None
+        """
 
         colors = [(0, 0, 0), (0.87, 0.87, 0.87), (0.54, 0.54, 0.54), (0.49, 0.33, 0.16), (0.29, 0.57, 0.25)]
         cmap_name = 'scene_cmap'
         cm = LinearSegmentedColormap.from_list(cmap_name, colors, N=5)
 
         fig = plt.figure()
-        plt.imshow(scene_track, cmap=cm)
+        plt.imshow(scene, cmap=cm)
         colors = pl.cm.Reds(np.linspace(1, 0.3, pred.shape[0]))
 
         matRot_track = cv2.getRotationMatrix2D((0, 0), -angle, 1)
@@ -247,7 +283,7 @@ class Trainer():
                 plt.plot(pred_scene[:, 0], pred_scene[:, 1], color=colors[i_p], linewidth=0.5, marker='o',
                          markersize=0.5)
         plt.plot(future_scene[:, 0], future_scene[:, 1], c='green', linewidth=1, marker='o', markersize=1)
-        plt.title('video: ' + video_id + ', vehicle: ' + vec_id + ',index: ' + str(index_tracklet))
+        plt.title('video: ' + video_id + ', vehicle: ' + vec_id + ', index: ' + str(index_tracklet))
         plt.axis('equal')
 
         # Save figure in Tensorboard
@@ -335,15 +371,21 @@ class Trainer():
                 future = future.cuda()
             self.opt.zero_grad()
             prob, sim = self.mem_n2n(past, future)
-            # compute loss with best predicted trajectory
-            loss = self.CustomLoss(prob, sim)
+
+            loss = self.ControllerLoss(prob, sim)
             loss.backward()
             self.opt.step()
             self.writer.add_scalar('loss/loss_total', loss, self.iterations)
 
         return loss.item()
 
-    def CustomLoss(self, prob, sim):
+    def ControllerLoss(self, prob, sim):
+        """
+        Loss to train writing controller:
+        :param prob: writing probability generated by controller
+        :param sim: similarity (between 0 and 1) between better prediction and ground-truth.
+        :return: loss
+        """
         loss = prob * sim + (1 - prob) * (1 - sim)
         return sum(loss)
 
