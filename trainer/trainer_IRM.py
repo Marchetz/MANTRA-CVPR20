@@ -80,8 +80,8 @@ class Trainer:
         self.max_epochs = config.max_epochs
 
         # load pretrained model and create memory_model
-        self.mem_n2n = torch.load(config.model)
-        #self.mem_n2n = model_memory_IRM(self.settings, self.model)
+        self.model = torch.load(config.model)
+        self.mem_n2n = model_memory_IRM(self.settings, self.model)
         self.mem_n2n.past_len = config.past_len
         self.mem_n2n.future_len = config.future_len
 
