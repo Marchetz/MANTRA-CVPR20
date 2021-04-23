@@ -81,3 +81,30 @@ This script generates metrics on the KITTI dataset using a trained models. We co
 
 ```
 
+
+#### Citation
+
+If you use our code or find it useful in your research, please cite the following paper:
+
+
+<pre class='bibtex'>
+@inproceedings{cvpr_2020,
+ author = {Marchetti, Francesco and  Becattini, Federico and Seidenari, Lorenzo and Del Bimbo, Alberto},
+ booktitle = {International Conference on Computer Vision and Pattern Recognition (CVPR)},
+ publisher = {IEEE},
+ title = {MANTRA: Memory Augmented Networks for Multiple Trajectory Prediction},
+ year = {2020}
+}
+</pre>
+
+#### License
+
+![logo](logo-header.png)
+
+This source code is shared under the license CC-BY-NC-SA, please refer to the [LICENSE](LICENSE) file for more information.
+
+This source code is only shared for R&D or evaluation of this model on user database.
+
+Any commercial utilization is strictly forbidden.
+
+For any utilization with a commercial goal, please contact [contact_cs](mailto:contact_cs@imra-europe.com) or [bendahan](mailto:bendahan@imra-europe.com)
