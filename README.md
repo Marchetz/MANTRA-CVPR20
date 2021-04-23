@@ -99,7 +99,7 @@ If you use our code or find it useful in your research, please cite the followin
 
 #### License
 
-![logo](logo-header.png)
+![logo](logo-imra.png)
 
 This source code is shared under the license CC-BY-NC-SA, please refer to the [LICENSE](LICENSE) file for more information.
 
