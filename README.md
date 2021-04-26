@@ -1,6 +1,7 @@
 # MANTRA: Memory Augmented Networks for Multiple Trajectory Prediction
 
 Official pytorch code for Mantra: Memory augmented networks for multiple trajectory prediction - CVPR2020
+
 [MANTRA: Memory Augmented Networks for Multiple Trajectory Prediction" by Francesco Marchetti, Federico Becattini, Lorenzo Seidenari, and Alberto Del Bimbo.](https://openaccess.thecvf.com/content_CVPR_2020/papers/Marchetti_MANTRA_Memory_Augmented_Networks_for_Multiple_Trajectory_Prediction_CVPR_2020_paper.pdf)
 
 ![Multiple trajectory prediction. Blue: past, red: futures.][gif]
