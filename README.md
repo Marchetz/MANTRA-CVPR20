@@ -15,7 +15,7 @@ pip install -r requirements.txt
 ```
 
 ## Dataset
-We provide a dataloader for the KITTI dataset in *dataset.py*. The dataloader yields samples of (past, future) trajectories paired with a semantic map of the surrounding scene.
+We provide a dataloader for the KITTI dataset in *dataset_invariance.py*. The dataloader yields samples of (past, future) trajectories paired with a semantic map of the surrounding scene.
 
 ## Training
 To train MANTRA, first it is necessary to train the autoencoder, then to train the writing controller and finally to train the Iterative
