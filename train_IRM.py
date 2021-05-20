@@ -1,6 +1,6 @@
 import argparse
 from trainer import trainer_IRM
-
+import torch
 
 def parse_config():
     parser = argparse.ArgumentParser()

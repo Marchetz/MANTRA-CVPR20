@@ -27,8 +27,8 @@ class Trainer():
         :param config: configuration parameters (see train_controllerMem.py)
         """
 
-        self.name_test = str(datetime.datetime.now())[:19]
         self.folder_tensorboard = 'runs/runs-createMem/'
+        self.name_test = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         self.folder_test = 'training/training_controller/' + self.name_test + '_' + config.info
         if not os.path.exists(self.folder_test):
             os.makedirs(self.folder_test)
@@ -269,7 +269,7 @@ class Trainer():
         fig = plt.figure()
         plt.imshow(scene, cmap=cm)
         colors = pl.cm.Reds(np.linspace(1, 0.3, pred.shape[0]))
-
+        angle = angle.item()
         matRot_track = cv2.getRotationMatrix2D((0, 0), -angle, 1)
         past = cv2.transform(past.cpu().numpy().reshape(-1, 1, 2), matRot_track).squeeze()
         future = cv2.transform(future.cpu().numpy().reshape(-1, 1, 2), matRot_track).squeeze()
