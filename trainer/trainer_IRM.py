@@ -242,6 +242,7 @@ class Trainer:
         fig = plt.figure()
         plt.imshow(scene, cmap=cm)
         colors = pl.cm.Reds(np.linspace(1, 0.3, pred.shape[0]))
+        angle = angle.item()
         matRot_track = cv2.getRotationMatrix2D((0, 0), -angle, 1)
         past = cv2.transform(past.cpu().numpy().reshape(-1, 1, 2), matRot_track).squeeze()
         future = cv2.transform(future.cpu().numpy().reshape(-1, 1, 2), matRot_track).squeeze()
