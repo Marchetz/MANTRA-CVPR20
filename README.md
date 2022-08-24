@@ -9,7 +9,7 @@ Official pytorch code for Mantra: Memory augmented networks for multiple traject
 [gif]: https://github.com/Marchetz/MANTRA-CVPR20/blob/master/mantra.gif "MANTRA"
 
 ## Installation
-To install the required packages, in a Python 3 environment just execute the following: 
+To install the required packages, in a Python 3.6 environment just execute the following: 
 ```bash
 pip install -r requirements.txt
 ```
